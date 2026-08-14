@@ -1,0 +1,20 @@
+{
+    "name": "CAT.CATEditor.Editor",
+    "rootNamespace": "",
+    "references": [
+        "UnityEngine.UI",
+        "UnityEditor.UI",
+        "Unity.TextMeshPro"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
