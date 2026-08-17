@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -28,6 +29,34 @@ namespace CAT.HierarchyUtility
 
         private readonly Dictionary<int, List<ParentInfo>> _childToParentMap = new Dictionary<int, List<ParentInfo>>();
 
+        // 역방향 인덱스: 참조를 보유한 GameObject ID → 그것이 가리키는 child ID 집합.
+        // 증분 갱신 시 특정 오브젝트의 기존 엔트리만 골라서 제거하기 위해 필요하다.
+        private readonly Dictionary<int, HashSet<int>> _parentToChildren = new Dictionary<int, HashSet<int>>();
+
+        // 증분 재스캔 대기열: ObjectChangeEvents로 알아낸 "실제로 바뀐" GameObject ID만 쌓인다.
+        // 전체 씬 재스캔은 씬 열기/플레이 종료/undo 같은 대량 변경 때만 수행한다.
+        private readonly HashSet<int> _pendingScanIds = new HashSet<int>();
+        private readonly List<int> _scratchIds = new List<int>();
+        private bool _pruneRequested;
+
+        // 캐시 재구축 디바운스
+        private const double CacheRebuildDelay = 0.3;
+        private const double IncrementalDelay = 0.15;
+        private bool _cacheDirty;
+        private double _cacheRebuildTime;
+
+        // 마커 전체 ON/OFF (무거운 씬에서 완전히 끌 수 있는 탈출구)
+        private const string EnabledPrefKey = "CAT.HierarchyMarker.Enabled";
+        private const string ToggleMenuPath = "CAT/Hierarchy/Reference Markers";
+        private static bool _enabled;
+        private static HierarchyMarkerModule _instance;
+
+        // 오브젝트 참조 필드가 아예 없는 스크립트 타입은 SerializedObject 생성 자체를 건너뛴다.
+        private static readonly Dictionary<Type, bool> _typeReferencesObjects = new Dictionary<Type, bool>();
+
+        // 참조 개수 라벨 문자열 캐시 (매 리페인트 ToString 할당 방지)
+        private static readonly string[] _countLabels = { "", "", "2", "3", "4", "5", "6", "7", "8", "9" };
+
         private Texture2D _defaultIcon;
         private Texture2D _prefabRootIcon;
         private GUIStyle _countLabelStyle;
@@ -49,12 +78,68 @@ namespace CAT.HierarchyUtility
         public void Initialize(HierarchyWindowAccessor accessor)
         {
             _accessor = accessor;
-            UpdateMarkedObjectsCache();
+            _instance = this;
+            _enabled = EditorPrefs.GetBool(EnabledPrefKey, true);
+            _cacheDirty = true;   // 하이어라키 창이 준비된 뒤 OnUpdate에서 한 번 구축한다
+
+            // 변경된 오브젝트를 정확히 알려주는 이벤트. 전체 재스캔 대신 증분 갱신의 근거가 된다.
+            ObjectChangeEvents.changesPublished += OnObjectChanges;
+
+            // 대량 변경(오브젝트 ID가 통째로 바뀌는 상황)만 전체 재구축을 요구한다.
+            EditorSceneManager.sceneOpened += OnSceneOpened;
+            EditorApplication.playModeStateChanged += OnPlayModeChanged;
+            PrefabStage.prefabStageOpened += OnPrefabStageChanged;
+            PrefabStage.prefabStageClosing += OnPrefabStageChanged;
+            Undo.undoRedoPerformed += MarkFullDirty;
+        }
+
+        private void OnSceneOpened(Scene scene, OpenSceneMode mode) => MarkFullDirty();
+        private void OnPrefabStageChanged(PrefabStage stage) => MarkFullDirty();
+
+        private void OnPlayModeChanged(PlayModeStateChange state)
+        {
+            // 플레이 종료 시 씬 오브젝트가 다시 로드되어 instanceID가 달라질 수 있다.
+            if (state == PlayModeStateChange.EnteredEditMode) MarkFullDirty();
+        }
+
+        private void MarkFullDirty()
+        {
+            _cacheDirty = true;
+            _cacheRebuildTime = EditorApplication.timeSinceStartup + CacheRebuildDelay;
+        }
+
+        // ── 마커 전체 토글 ──────────────────────────────────────────────────────
+        [MenuItem(ToggleMenuPath)]
+        private static void ToggleEnabled()
+        {
+            _enabled = !EditorPrefs.GetBool(EnabledPrefKey, true);
+            EditorPrefs.SetBool(EnabledPrefKey, _enabled);
+
+            if (_instance != null)
+            {
+                if (_enabled) _instance.MarkFullDirty();
+                else
+                {
+                    _instance._childToParentMap.Clear();
+                    _instance._parentToChildren.Clear();
+                    _instance._pendingScanIds.Clear();
+                }
+            }
+            EditorApplication.RepaintHierarchyWindow();
+        }
+
+        [MenuItem(ToggleMenuPath, true)]
+        private static bool ToggleEnabledValidate()
+        {
+            Menu.SetChecked(ToggleMenuPath, EditorPrefs.GetBool(EnabledPrefKey, true));
+            return true;
         }
 
         public void InitUI(VisualElement container) { }
         public void OnUpdate()
         {
+            RebuildCacheIfNeeded();
+
             if (!_isFocusAnimating) return;
 
             var elapsed = EditorApplication.timeSinceStartup - _focusStartTime;
@@ -74,6 +159,7 @@ namespace CAT.HierarchyUtility
 
         public void OnHierarchyItemGUI(int instanceID, Rect selectionRect)
         {
+            if (!_enabled) return;
             if (EditorApplication.isPlayingOrWillChangePlaymode)
                 return;
 
@@ -100,7 +186,15 @@ namespace CAT.HierarchyUtility
 
             if (_childToParentMap.TryGetValue(instanceID, out List<ParentInfo> parentInfos))
             {
-                bool hasPrefabRootParent = parentInfos.Any(p => p.isPrefabRoot);
+                // 하이어라키 행마다 매 리페인트 실행되므로 LINQ 대신 루프를 쓴다.
+                bool hasPrefabRootParent = false;
+                for (int i = 0; i < parentInfos.Count; i++)
+                {
+                    if (!parentInfos[i].isPrefabRoot) continue;
+                    hasPrefabRootParent = true;
+                    break;
+                }
+
                 Texture2D iconToDraw = hasPrefabRootParent ? _prefabRootIcon : _defaultIcon;
 
                 Rect iconRect = new Rect(selectionRect.xMax - 20f, selectionRect.y + (selectionRect.height - 12f) / 2, 8f, 8f);
@@ -109,7 +203,7 @@ namespace CAT.HierarchyUtility
                 // 참조가 2개 이상일 때만 숫자 표시
                 if (parentInfos.Count >= 2)
                 {
-                    string countText = parentInfos.Count > 9 ? "9+" : parentInfos.Count.ToString();
+                    string countText = parentInfos.Count > 9 ? "9+" : _countLabels[parentInfos.Count];
                     Rect countRect = new Rect(iconRect.xMax + 1f, iconRect.y - 1f, 14f, iconRect.height);
                     GUI.Label(countRect, countText, _countLabelStyle);
                 }
@@ -175,14 +269,85 @@ namespace CAT.HierarchyUtility
             }
         }
 
+        // hierarchyChanged는 생성/삭제/이동/이름변경마다 발생하지만, 이 중 참조 정보가 실제로
+        // 변하는 경우는 ObjectChangeEvents가 따로 알려준다. 여기서는 삭제된 오브젝트의
+        // 잔여 엔트리 정리(prune)만 예약한다 — 전체 재스캔 없음.
         public void OnHierarchyChanged()
         {
-            UpdateMarkedObjectsCache();
+            _pruneRequested = true;
+            _cacheRebuildTime = EditorApplication.timeSinceStartup + IncrementalDelay;
+        }
+
+        // 어떤 오브젝트가 어떻게 바뀌었는지 정확히 통지받아, 바뀐 서브트리만 재스캔 대기열에 넣는다.
+        private void OnObjectChanges(ref ObjectChangeEventStream stream)
+        {
+            if (!_enabled || _cacheDirty) return;
+            if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+
+            bool touched = false;
+
+            for (int i = 0; i < stream.length; i++)
+            {
+                switch (stream.GetEventType(i))
+                {
+                    case ObjectChangeKind.CreateGameObjectHierarchy:
+                        stream.GetCreateGameObjectHierarchyEvent(i, out var created);
+                        _pendingScanIds.Add(created.instanceId);
+                        touched = true;
+                        break;
+
+                    case ObjectChangeKind.ChangeGameObjectStructure:
+                        stream.GetChangeGameObjectStructureEvent(i, out var structure);
+                        _pendingScanIds.Add(structure.instanceId);
+                        touched = true;
+                        break;
+
+                    case ObjectChangeKind.ChangeGameObjectStructureHierarchy:
+                        stream.GetChangeGameObjectStructureHierarchyEvent(i, out var structureH);
+                        _pendingScanIds.Add(structureH.instanceId);
+                        touched = true;
+                        break;
+
+                    case ObjectChangeKind.ChangeGameObjectOrComponentProperties:
+                        // 인스펙터에서 참조를 새로 할당하는 경우가 여기로 온다.
+                        stream.GetChangeGameObjectOrComponentPropertiesEvent(i, out var props);
+                        _pendingScanIds.Add(props.instanceId);
+                        touched = true;
+                        break;
+
+                    case ObjectChangeKind.ChangeGameObjectParent:
+                        // 참조는 변하지 않지만 프리팹 루트 여부 표시가 달라질 수 있어 해당 서브트리만 갱신.
+                        stream.GetChangeGameObjectParentEvent(i, out var parented);
+                        _pendingScanIds.Add(parented.instanceId);
+                        touched = true;
+                        break;
+
+                    case ObjectChangeKind.DestroyGameObjectHierarchy:
+                        _pruneRequested = true;
+                        touched = true;
+                        break;
+                }
+            }
+
+            if (touched)
+            {
+                _cacheRebuildTime = EditorApplication.timeSinceStartup + IncrementalDelay;
+            }
         }
 
         public void Dispose()
         {
+            ObjectChangeEvents.changesPublished -= OnObjectChanges;
+            EditorSceneManager.sceneOpened -= OnSceneOpened;
+            EditorApplication.playModeStateChanged -= OnPlayModeChanged;
+            PrefabStage.prefabStageOpened -= OnPrefabStageChanged;
+            PrefabStage.prefabStageClosing -= OnPrefabStageChanged;
+            Undo.undoRedoPerformed -= MarkFullDirty;
+
             _childToParentMap.Clear();
+            _parentToChildren.Clear();
+            _pendingScanIds.Clear();
+            if (_instance == this) _instance = null;
         }
 
         private void ExpandHierarchyAncestors(Transform target)
@@ -434,12 +599,58 @@ namespace CAT.HierarchyUtility
             return idx;
         }
 
+        private void RebuildCacheIfNeeded()
+        {
+            if (!_enabled) return;
+            if (!_cacheDirty && !_pruneRequested && _pendingScanIds.Count == 0) return;
+            if (EditorApplication.timeSinceStartup < _cacheRebuildTime) return;
+            if (EditorApplication.isPlayingOrWillChangePlaymode) return;
+
+            // 하이어라키 창이 없으면 표시할 곳이 없으므로 스캔을 미룬다.
+            if (_accessor != null && _accessor.Window == null) return;
+
+            // 전체 재구축이 예약되어 있으면 증분 작업은 의미가 없다.
+            if (_cacheDirty)
+            {
+                _cacheDirty = false;
+                _pruneRequested = false;
+                _pendingScanIds.Clear();
+                UpdateMarkedObjectsCache();
+                return;
+            }
+
+            bool changed = false;
+
+            if (_pruneRequested)
+            {
+                _pruneRequested = false;
+                changed |= PruneDeadEntries();
+            }
+
+            if (_pendingScanIds.Count > 0)
+            {
+                foreach (int id in _pendingScanIds)
+                {
+                    var obj = EditorUtility.InstanceIDToObject(id);
+                    GameObject go = obj as GameObject;
+                    if (go == null && obj is Component comp) go = comp.gameObject;
+                    if (go == null) continue;
+
+                    RescanSubtree(go);
+                    changed = true;
+                }
+                _pendingScanIds.Clear();
+            }
+
+            if (changed) EditorApplication.RepaintHierarchyWindow();
+        }
+
+        // 전체 재구축: 씬 열기, 플레이 종료, undo 등 대량 변경 시에만.
         private void UpdateMarkedObjectsCache()
         {
-            if (EditorApplication.isPlayingOrWillChangePlaymode)
-                return;
-
             _childToParentMap.Clear();
+            _parentToChildren.Clear();
+
             var currentPrefabStage = PrefabStageUtility.GetCurrentPrefabStage();
             IEnumerable<MonoBehaviour> scriptsToScan;
 
@@ -458,57 +669,136 @@ namespace CAT.HierarchyUtility
 
             foreach (var script in scriptsToScan)
             {
-                if (script == null) continue;
-
-                // 시스템/라이브러리 네임스페이스 필터링
-                // Unity 기본 컴포넌트나 TMP 같은 라이브러리 컴포넌트는 건너뜀
-                var scriptNamespace = script.GetType().Namespace;
-                if (!string.IsNullOrEmpty(scriptNamespace) && (
-                    scriptNamespace.StartsWith("UnityEngine") ||
-                    scriptNamespace.StartsWith("UnityEditor") ||
-                    scriptNamespace.StartsWith("TMPro")))
-                {
-                    continue;
-                }
-
-                GameObject parentObject = script.gameObject;
-                int parentID = parentObject.GetInstanceID();
-                bool isParentPrefabRoot = currentPrefabStage != null
-                    ? parentObject.transform.parent == currentPrefabStage.prefabContentsRoot.transform
-                    : PrefabUtility.IsPartOfPrefabInstance(parentObject) && PrefabUtility.GetNearestPrefabInstanceRoot(parentObject) == parentObject;
-
-                // SerializedProperty로 모든 오브젝트 참조 탐색 (중첩 직렬화 클래스, 배열, 리스트 모두 포함)
-                var so = new SerializedObject(script);
-                var prop = so.GetIterator();
-                bool enterChildren = true;
-                while (prop.NextVisible(enterChildren))
-                {
-                    enterChildren = true;
-
-                    if (prop.propertyType != SerializedPropertyType.ObjectReference)
-                        continue;
-
-                    // m_Script 등 Unity 내부 필드 제외
-                    if (prop.propertyPath == "m_Script") continue;
-
-                    UnityEngine.Object refObj = prop.objectReferenceValue;
-                    if (refObj == null) continue;
-
-                    GameObject referencedObject = null;
-                    if (refObj is GameObject go) referencedObject = go;
-                    else if (refObj is Component comp) referencedObject = comp.gameObject;
-
-                    // 루트 필드 이름 추출 (예: "targets.Array.data[2].transform" → "targets")
-                    string fieldName = prop.propertyPath;
-                    int dotIndex = fieldName.IndexOf('.');
-                    if (dotIndex >= 0) fieldName = fieldName.Substring(0, dotIndex);
-
-                    RegisterReference(referencedObject, parentID, isParentPrefabRoot, script, fieldName);
-                }
-                so.Dispose();
+                ScanScript(script, currentPrefabStage);
             }
 
             EditorApplication.RepaintHierarchyWindow();
+        }
+
+        // 증분 재구축: 바뀐 GameObject의 서브트리만 다시 스캔한다.
+        private void RescanSubtree(GameObject root)
+        {
+            var currentPrefabStage = PrefabStageUtility.GetCurrentPrefabStage();
+            var behaviours = root.GetComponentsInChildren<MonoBehaviour>(true);
+
+            // 서브트리에 속한 GO들의 기존 엔트리를 먼저 제거 (스크립트/참조가 삭제된 경우 반영)
+            _scratchIds.Clear();
+            _scratchIds.Add(root.GetInstanceID());
+            foreach (var mb in behaviours)
+            {
+                if (mb != null) _scratchIds.Add(mb.gameObject.GetInstanceID());
+            }
+            foreach (int goID in _scratchIds)
+            {
+                RemoveParentEntries(goID);
+            }
+
+            foreach (var mb in behaviours)
+            {
+                ScanScript(mb, currentPrefabStage);
+            }
+        }
+
+        // 단일 스크립트의 참조 필드를 스캔해 맵에 등록한다. (전체/증분 공용)
+        private void ScanScript(MonoBehaviour script, PrefabStage currentPrefabStage)
+        {
+            if (script == null) return;
+
+            // 시스템/라이브러리 네임스페이스 필터링
+            Type scriptType = script.GetType();
+            var scriptNamespace = scriptType.Namespace;
+            if (!string.IsNullOrEmpty(scriptNamespace) && (
+                scriptNamespace.StartsWith("UnityEngine") ||
+                scriptNamespace.StartsWith("UnityEditor") ||
+                scriptNamespace.StartsWith("TMPro")))
+            {
+                return;
+            }
+
+            // 오브젝트 참조 필드가 없는 타입은 SerializedObject 생성 자체를 건너뛴다. (타입 단위 캐시)
+            if (!TypeReferencesObjects(scriptType)) return;
+
+            GameObject parentObject = script.gameObject;
+            int parentID = parentObject.GetInstanceID();
+            bool isParentPrefabRoot = currentPrefabStage != null
+                ? parentObject.transform.parent == currentPrefabStage.prefabContentsRoot.transform
+                : PrefabUtility.IsPartOfPrefabInstance(parentObject) && PrefabUtility.GetNearestPrefabInstanceRoot(parentObject) == parentObject;
+
+            // SerializedProperty로 모든 오브젝트 참조 탐색 (중첩 직렬화 클래스, 배열, 리스트 모두 포함)
+            var so = new SerializedObject(script);
+            var prop = so.GetIterator();
+            bool enterChildren = true;
+            while (prop.NextVisible(enterChildren))
+            {
+                enterChildren = true;
+
+                if (prop.propertyType != SerializedPropertyType.ObjectReference)
+                    continue;
+
+                // m_Script 등 Unity 내부 필드 제외
+                if (prop.propertyPath == "m_Script") continue;
+
+                UnityEngine.Object refObj = prop.objectReferenceValue;
+                if (refObj == null) continue;
+
+                GameObject referencedObject = null;
+                if (refObj is GameObject go) referencedObject = go;
+                else if (refObj is Component comp) referencedObject = comp.gameObject;
+
+                // 루트 필드 이름 추출 (예: "targets.Array.data[2].transform" → "targets")
+                string fieldName = prop.propertyPath;
+                int dotIndex = fieldName.IndexOf('.');
+                if (dotIndex >= 0) fieldName = fieldName.Substring(0, dotIndex);
+
+                RegisterReference(referencedObject, parentID, isParentPrefabRoot, script, fieldName);
+            }
+            so.Dispose();
+        }
+
+        // 특정 GameObject가 등록한 참조 엔트리를 역방향 인덱스로 즉시 제거한다.
+        private void RemoveParentEntries(int parentGoID)
+        {
+            if (!_parentToChildren.TryGetValue(parentGoID, out HashSet<int> children)) return;
+
+            foreach (int childID in children)
+            {
+                if (!_childToParentMap.TryGetValue(childID, out List<ParentInfo> list)) continue;
+
+                for (int i = list.Count - 1; i >= 0; i--)
+                {
+                    if (list[i].parentId == parentGoID) list.RemoveAt(i);
+                }
+                if (list.Count == 0) _childToParentMap.Remove(childID);
+            }
+
+            _parentToChildren.Remove(parentGoID);
+        }
+
+        // 삭제된 오브젝트가 남긴 엔트리 정리. SerializedObject 없이 ID 유효성만 확인하므로 매우 싸다.
+        private bool PruneDeadEntries()
+        {
+            _scratchIds.Clear();
+            foreach (var kv in _parentToChildren)
+            {
+                if (EditorUtility.InstanceIDToObject(kv.Key) == null) _scratchIds.Add(kv.Key);
+            }
+            foreach (int deadParent in _scratchIds)
+            {
+                RemoveParentEntries(deadParent);
+            }
+            bool changed = _scratchIds.Count > 0;
+
+            _scratchIds.Clear();
+            foreach (var kv in _childToParentMap)
+            {
+                if (EditorUtility.InstanceIDToObject(kv.Key) == null) _scratchIds.Add(kv.Key);
+            }
+            foreach (int deadChild in _scratchIds)
+            {
+                _childToParentMap.Remove(deadChild);
+            }
+
+            return changed || _scratchIds.Count > 0;
         }
 
         private void RegisterReference(GameObject referencedObject, int parentID, bool isParentPrefabRoot, MonoBehaviour script, string fieldName)
@@ -518,13 +808,88 @@ namespace CAT.HierarchyUtility
             int childID = referencedObject.GetInstanceID();
             if (parentID == childID) return;
 
-            var parentInfo = new ParentInfo { parentId = parentID, isPrefabRoot = isParentPrefabRoot, script = script, fieldName = fieldName };
-            if (!_childToParentMap.ContainsKey(childID))
-                _childToParentMap[childID] = new List<ParentInfo>();
+            if (!_childToParentMap.TryGetValue(childID, out List<ParentInfo> list))
+            {
+                list = new List<ParentInfo>(2);
+                _childToParentMap[childID] = list;
+            }
 
             // 동일 스크립트+필드 중복 등록 방지
-            if (!_childToParentMap[childID].Any(p => p.script == script && p.fieldName == fieldName))
-                _childToParentMap[childID].Add(parentInfo);
+            for (int i = 0; i < list.Count; i++)
+            {
+                if (list[i].script == script && list[i].fieldName == fieldName) return;
+            }
+
+            list.Add(new ParentInfo
+            {
+                parentId = parentID,
+                isPrefabRoot = isParentPrefabRoot,
+                script = script,
+                fieldName = fieldName
+            });
+
+            // 역방향 인덱스 갱신 (증분 제거용)
+            if (!_parentToChildren.TryGetValue(parentID, out HashSet<int> children))
+            {
+                children = new HashSet<int>();
+                _parentToChildren[parentID] = children;
+            }
+            children.Add(childID);
+        }
+
+        // ── 타입 단위 사전 판별 ─────────────────────────────────────────────────
+        // 직렬화되는 필드 중 UnityEngine.Object 참조가 하나라도 있는지 리플렉션으로 1회만 확인하고 캐싱한다.
+        private static bool TypeReferencesObjects(Type type)
+        {
+            if (_typeReferencesObjects.TryGetValue(type, out bool cached)) return cached;
+
+            bool result = ScanTypeForObjectFields(type, 0);
+            _typeReferencesObjects[type] = result;
+            return result;
+        }
+
+        private static bool ScanTypeForObjectFields(Type type, int depth)
+        {
+            if (type == null || depth > 3) return false;
+
+            const BindingFlags Flags = BindingFlags.Instance | BindingFlags.Public |
+                                       BindingFlags.NonPublic | BindingFlags.DeclaredOnly;
+
+            for (Type current = type; current != null && current != typeof(MonoBehaviour) && current != typeof(object); current = current.BaseType)
+            {
+                foreach (var field in current.GetFields(Flags))
+                {
+                    if (!IsSerializedField(field)) continue;
+                    if (FieldTypeReferencesObjects(field.FieldType, depth)) return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsSerializedField(FieldInfo field)
+        {
+            if (field.IsStatic || field.IsInitOnly) return false;
+            if (field.IsPublic) return !field.IsDefined(typeof(NonSerializedAttribute), false);
+            return field.IsDefined(typeof(SerializeField), false) ||
+                   field.IsDefined(typeof(SerializeReference), false);
+        }
+
+        private static bool FieldTypeReferencesObjects(Type fieldType, int depth)
+        {
+            if (fieldType.IsArray) fieldType = fieldType.GetElementType();
+            else if (fieldType.IsGenericType && fieldType.GetGenericTypeDefinition() == typeof(List<>))
+                fieldType = fieldType.GetGenericArguments()[0];
+
+            if (fieldType == null) return false;
+            if (typeof(UnityEngine.Object).IsAssignableFrom(fieldType)) return true;
+            if (fieldType.IsPrimitive || fieldType.IsEnum || fieldType == typeof(string)) return false;
+
+            // [Serializable] 중첩 클래스/구조체 내부에 참조가 있을 수 있다
+            if (fieldType.IsDefined(typeof(SerializableAttribute), false))
+                return ScanTypeForObjectFields(fieldType, depth + 1);
+
+            return false;
         }
     }
 }

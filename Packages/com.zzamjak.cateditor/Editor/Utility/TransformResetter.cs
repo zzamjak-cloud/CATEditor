@@ -6,42 +6,73 @@ namespace CAT.Utility
 {
     // ========== Transform (일반) ==========
     [CustomEditor(typeof(Transform))]
+    [CanEditMultipleObjects]
     public class TransformResetter : Editor
     {
-        private Transform _transform;
+        // FindProperty와 GUIContent 생성은 인스펙터가 그려질 때마다 발생하면 안 되므로 OnEnable에서 1회만 준비한다.
+        private static readonly GUIContent PositionLabel = new GUIContent("Position");
+        private static readonly GUIContent RotationLabel = new GUIContent("Rotation");
+        private static readonly GUIContent ScaleLabel = new GUIContent("Scale");
+        private static readonly GUIContent ResetLabel = new GUIContent("R", "기본값으로 되돌리기");
+        private static readonly GUILayoutOption[] ResetButtonWidth = { GUILayout.Width(30f) };
+
+        private SerializedProperty _position;
+        private SerializedProperty _rotation;
+        private SerializedProperty _scale;
 
         private void OnEnable()
         {
-            _transform = (Transform)target;
+            _position = serializedObject.FindProperty("m_LocalPosition");
+            _rotation = serializedObject.FindProperty("m_LocalRotation");
+            _scale = serializedObject.FindProperty("m_LocalScale");
+        }
+
+        private void OnDisable()
+        {
+            _position = null;
+            _rotation = null;
+            _scale = null;
         }
 
         public override void OnInspectorGUI()
         {
+            if (_position == null) return;
+
             serializedObject.Update();
 
-            DrawFieldWithResetButton("Local Position", () => _transform.localPosition = Vector3.zero);
-            DrawFieldWithResetButton("Local Rotation", () => _transform.localRotation = Quaternion.identity);
-            DrawFieldWithResetButton("Local Scale", () => _transform.localScale = Vector3.one);
+            DrawFieldWithResetButton(_position, PositionLabel, ResetKind.Position);
+            DrawFieldWithResetButton(_rotation, RotationLabel, ResetKind.Rotation);
+            DrawFieldWithResetButton(_scale, ScaleLabel, ResetKind.Scale);
 
             serializedObject.ApplyModifiedProperties();
         }
 
-        private void DrawFieldWithResetButton(string label, Action resetAction)
+        private enum ResetKind { Position, Rotation, Scale }
+
+        private void DrawFieldWithResetButton(SerializedProperty property, GUIContent label, ResetKind kind)
         {
             EditorGUILayout.BeginHorizontal();
 
-            if (label == "Local Position")
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("m_LocalPosition"), new GUIContent("Position"));
-            else if (label == "Local Rotation")
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("m_LocalRotation"), new GUIContent("Rotation"));
-            else if (label == "Local Scale")
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("m_LocalScale"), new GUIContent("Scale"));
+            EditorGUILayout.PropertyField(property, label);
 
-            if (GUILayout.Button("R", GUILayout.Width(30)))
+            if (GUILayout.Button(ResetLabel, ResetButtonWidth))
             {
-                Undo.RecordObject(_transform, $"{label} Reset");
-                resetAction.Invoke();
-                EditorUtility.SetDirty(_transform);
+                Undo.RecordObjects(targets, $"{label.text} Reset");
+                foreach (var t in targets)
+                {
+                    if (!(t is Transform transform)) continue;
+
+                    switch (kind)
+                    {
+                        case ResetKind.Position: transform.localPosition = Vector3.zero; break;
+                        case ResetKind.Rotation: transform.localRotation = Quaternion.identity; break;
+                        case ResetKind.Scale: transform.localScale = Vector3.one; break;
+                    }
+
+                    EditorUtility.SetDirty(transform);
+                }
+
+                serializedObject.Update();
             }
 
             EditorGUILayout.EndHorizontal();
@@ -53,13 +84,16 @@ namespace CAT.Utility
     [CanEditMultipleObjects]
     public class RectTransformResetter : Editor
     {
+        // Type.GetType은 문자열 어셈블리 탐색이라 선택할 때마다 호출하지 않도록 1회만 해석한다.
+        private static readonly Type DefaultEditorType = Type.GetType("UnityEditor.RectTransformEditor, UnityEditor");
+        private static readonly GUILayoutOption[] ButtonWidth = { GUILayout.MinWidth(50f) };
+
         private Editor _defaultEditor;
 
         private void OnEnable()
         {
-            Type editorType = Type.GetType("UnityEditor.RectTransformEditor, UnityEditor");
-            if (editorType != null)
-                _defaultEditor = CreateEditor(targets, editorType);
+            if (DefaultEditorType != null)
+                _defaultEditor = CreateEditor(targets, DefaultEditorType);
         }
 
         private void OnDisable()
@@ -86,7 +120,7 @@ namespace CAT.Utility
         {
             EditorGUILayout.BeginHorizontal();
 
-            if (GUILayout.Button("Pos 0", GUILayout.MinWidth(50)))
+            if (GUILayout.Button("Pos 0", ButtonWidth))
             {
                 Undo.RecordObjects(targets, "RectTransform Position Reset");
                 foreach (var t in targets)
@@ -99,7 +133,7 @@ namespace CAT.Utility
                 }
             }
 
-            if (GUILayout.Button("Rot 0", GUILayout.MinWidth(50)))
+            if (GUILayout.Button("Rot 0", ButtonWidth))
             {
                 Undo.RecordObjects(targets, "RectTransform Rotation Reset");
                 foreach (var t in targets)
@@ -110,7 +144,7 @@ namespace CAT.Utility
                 }
             }
 
-            if (GUILayout.Button("Scale 0", GUILayout.MinWidth(50)))
+            if (GUILayout.Button("Scale 0", ButtonWidth))
             {
                 Undo.RecordObjects(targets, "RectTransform Scale Reset");
                 foreach (var t in targets)

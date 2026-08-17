@@ -62,6 +62,8 @@ namespace CAT.Utility
 
         private GUIStyle _handleStyle;
         private GUIStyle _editModeToggleStyle;
+        private GUIContent _folderIconContent;
+        private GUIContent _includeChildrenContent;
         private bool _stylesInitialized;
 
         // Project View 하이라이트용 캐시
@@ -311,6 +313,10 @@ namespace CAT.Utility
 
             _editModeToggleStyle = new GUIStyle(GUI.skin.toggle) { fontSize = 10 };
 
+            // 매 리페인트 IconContent 조회/GUIContent 할당을 피하기 위한 캐시
+            _folderIconContent = EditorGUIUtility.IconContent("Folder Icon");
+            _includeChildrenContent = new GUIContent("▼", "자식 폴더에도 컬러 적용");
+
             _stylesInitialized = true;
         }
 
@@ -370,8 +376,7 @@ namespace CAT.Utility
                     GUILayout.Space(2);
                 }
 
-                GUIContent folderIcon = EditorGUIUtility.IconContent("Folder Icon");
-                GUILayout.Label(folderIcon, GUILayout.Width(16), GUILayout.Height(16));
+                GUILayout.Label(_folderIconContent, GUILayout.Width(16), GUILayout.Height(16));
 
                 DefaultAsset folder = _favoriteFolders[i];
                 if (folder != null)
@@ -394,7 +399,7 @@ namespace CAT.Utility
                 {
                     // 자식 폴더 포함 체크박스
                     bool prevInclude = _includeChildren[i];
-                    bool newInclude = GUILayout.Toggle(prevInclude, new GUIContent("▼", "자식 폴더에도 컬러 적용"), GUILayout.Width(16));
+                    bool newInclude = GUILayout.Toggle(prevInclude, _includeChildrenContent, GUILayout.Width(16));
                     if (newInclude != prevInclude)
                     {
                         _includeChildren[i] = newInclude;

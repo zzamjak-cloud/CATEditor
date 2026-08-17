@@ -18,22 +18,25 @@ namespace CAT.Utility
     public class FilteredImageEditor : UnityEditor.UI.ImageEditor
     {
         private FilteredSpriteFinderDrawer drawer;
+        private Action<Sprite> onSpriteSelected;   // 매 리페인트 클로저 할당을 피하려고 1회만 생성
 
         protected override void OnEnable()
         {
             base.OnEnable();
             drawer = new FilteredSpriteFinderDrawer();
             drawer.Initialize();
+            onSpriteSelected = ApplySprite;
+        }
+
+        private void ApplySprite(Sprite sprite)
+        {
+            serializedObject.FindProperty("m_Sprite").objectReferenceValue = sprite;
+            serializedObject.ApplyModifiedProperties();
         }
 
         public override void OnInspectorGUI()
         {
             base.OnInspectorGUI();
-            Action<Sprite> onSpriteSelected = (sprite) =>
-            {
-                serializedObject.FindProperty("m_Sprite").objectReferenceValue = sprite;
-                serializedObject.ApplyModifiedProperties();
-            };
             drawer.DrawInspectorGUI(onSpriteSelected);
         }
     }
@@ -44,22 +47,25 @@ namespace CAT.Utility
     public class FilteredRawImageEditor : UnityEditor.UI.RawImageEditor
     {
         private FilteredSpriteFinderDrawer drawer;
+        private Action<Sprite> onSpriteSelected;
 
         protected override void OnEnable()
         {
             base.OnEnable();
             drawer = new FilteredSpriteFinderDrawer();
             drawer.Initialize();
+            onSpriteSelected = ApplySprite;
+        }
+
+        private void ApplySprite(Sprite sprite)
+        {
+            serializedObject.FindProperty("m_Texture").objectReferenceValue = sprite != null ? sprite.texture : null;
+            serializedObject.ApplyModifiedProperties();
         }
 
         public override void OnInspectorGUI()
         {
             base.OnInspectorGUI();
-            Action<Sprite> onSpriteSelected = (sprite) =>
-            {
-                serializedObject.FindProperty("m_Texture").objectReferenceValue = sprite != null ? sprite.texture : null;
-                serializedObject.ApplyModifiedProperties();
-            };
             drawer.DrawInspectorGUI(onSpriteSelected);
         }
     }
@@ -69,17 +75,20 @@ namespace CAT.Utility
     [CanEditMultipleObjects]
     public class FilteredSpriteRendererEditor : Editor
     {
+        private static readonly Type DefaultEditorType = Type.GetType("UnityEditor.SpriteRendererEditor, UnityEditor");
+
         private FilteredSpriteFinderDrawer drawer;
         private Editor defaultEditor;
+        private Action<Sprite> onSpriteSelected;
 
         private void OnEnable()
         {
             drawer = new FilteredSpriteFinderDrawer();
             drawer.Initialize();
+            onSpriteSelected = ApplySprite;
 
-            var targets = serializedObject.targetObjects;
-            var editorType = Type.GetType("UnityEditor.SpriteRendererEditor, UnityEditor");
-            defaultEditor = CreateEditor(targets, editorType);
+            if (DefaultEditorType != null)
+                defaultEditor = CreateEditor(serializedObject.targetObjects, DefaultEditorType);
         }
 
         private void OnDisable()
@@ -87,18 +96,21 @@ namespace CAT.Utility
             if (defaultEditor != null)
             {
                 DestroyImmediate(defaultEditor);
+                defaultEditor = null;
             }
+        }
+
+        private void ApplySprite(Sprite sprite)
+        {
+            serializedObject.FindProperty("m_Sprite").objectReferenceValue = sprite;
+            serializedObject.ApplyModifiedProperties();
         }
 
         public override void OnInspectorGUI()
         {
-            defaultEditor.OnInspectorGUI();
+            if (defaultEditor != null) defaultEditor.OnInspectorGUI();
+            else DrawDefaultInspector();
 
-            Action<Sprite> onSpriteSelected = (sprite) =>
-            {
-                serializedObject.FindProperty("m_Sprite").objectReferenceValue = sprite;
-                serializedObject.ApplyModifiedProperties();
-            };
             drawer.DrawInspectorGUI(onSpriteSelected);
         }
     }
@@ -115,6 +127,14 @@ namespace CAT.Utility
         private static List<DefaultAsset> searchFolders = new List<DefaultAsset>();
         private static bool isInitialized = false;
         private static bool isFoldedOut = true;
+
+        // 폴더 목록 표시용 캐시 (목록이 바뀔 때만 재생성)
+        private static GUIContent[] folderLabels = new GUIContent[0];
+        private static int foldersVersion;
+        private static int foldersLabelVersion = -1;
+
+        private static readonly GUILayoutOption[] FindButtonWidth = { GUILayout.Width(50f) };
+        private static readonly GUILayoutOption[] RemoveButtonWidth = { GUILayout.Width(25f) };
 
         // 초기화 메서드
         public void Initialize()
@@ -154,25 +174,31 @@ namespace CAT.Utility
             {
                 EditorGUI.indentLevel++;
 
-                // 등록된 폴더 목록 정리
-                if (searchFolders.RemoveAll(f => f == null) > 0)
+                // 목록 정리는 레이아웃 패스에서 1회만 (매 이벤트마다 전체 스캔하지 않도록)
+                if (Event.current.type == EventType.Layout && searchFolders.RemoveAll(IsNullFolder) > 0)
                 {
                     SaveFoldersToPrefs();
                 }
 
-                // 등록된 폴더들 표시
+                EnsureFolderLabels();
+
+                // 등록된 폴더들 표시.
+                // ObjectField는 그릴 때마다 GUID 조회와 아이콘 로드를 유발하므로
+                // 읽기 전용 표시에는 캐싱한 GUIContent를 쓴다.
                 for (int i = 0; i < searchFolders.Count; i++)
                 {
                     EditorGUILayout.BeginHorizontal();
-                    EditorGUILayout.ObjectField(searchFolders[i], typeof(DefaultAsset), false);
 
-                    if (GUILayout.Button("Find", GUILayout.Width(50)))
+                    if (i < folderLabels.Length)
+                        EditorGUILayout.LabelField(folderLabels[i], EditorStyles.label);
+
+                    if (GUILayout.Button("Find", FindButtonWidth))
                     {
                         string path = AssetDatabase.GetAssetPath(searchFolders[i]);
                         FilteredSpriteSelector.ShowWindow(path, onSpriteSelectedAction);
                     }
 
-                    if (GUILayout.Button("X", GUILayout.Width(25)))
+                    if (GUILayout.Button("X", RemoveButtonWidth))
                     {
                         searchFolders.RemoveAt(i);
                         SaveFoldersToPrefs();
@@ -181,6 +207,26 @@ namespace CAT.Utility
                     EditorGUILayout.EndHorizontal();
                 }
                 EditorGUI.indentLevel--;
+            }
+        }
+
+        private static bool IsNullFolder(DefaultAsset folder) => folder == null;
+
+        // 폴더 목록이 바뀔 때만 라벨(이름 + 아이콘 + 경로 툴팁)을 다시 만든다.
+        private static void EnsureFolderLabels()
+        {
+            if (foldersLabelVersion == foldersVersion) return;
+            foldersLabelVersion = foldersVersion;
+
+            Texture folderIcon = EditorGUIUtility.IconContent("Folder Icon").image;
+            folderLabels = new GUIContent[searchFolders.Count];
+
+            for (int i = 0; i < searchFolders.Count; i++)
+            {
+                DefaultAsset folder = searchFolders[i];
+                folderLabels[i] = folder != null
+                    ? new GUIContent(folder.name, folderIcon, AssetDatabase.GetAssetPath(folder))
+                    : new GUIContent("(없는 폴더)", folderIcon);
             }
         }
 
@@ -275,6 +321,8 @@ namespace CAT.Utility
         // 폴더 목록을 PlayerPrefs로 저장
         private void SaveFoldersToPrefs()
         {
+            foldersVersion++;   // 표시용 라벨 캐시 무효화
+
             var folderGUIDs = searchFolders
                 .Where(f => f != null)
                 .Select(f => AssetDatabase.AssetPathToGUID(AssetDatabase.GetAssetPath(f)))
@@ -293,6 +341,7 @@ namespace CAT.Utility
         // PlayerPrefs에서 폴더 목록 로드
         private void LoadFoldersFromPrefs()
         {
+            foldersVersion++;   // 표시용 라벨 캐시 무효화
             searchFolders.Clear();
             
             int folderCount = EditorPrefs.GetInt(FOLDERS_PREFS_KEY + "_Count", 0);
@@ -346,6 +395,21 @@ namespace CAT.Utility
         private List<FolderNode> folderNodes = new List<FolderNode>();
         private float gridSize = 1.0f; // 그리드 크기 조절 (0.0 ~ 1.0)
         private bool showAsList = false; // 리스트 뷰 여부
+
+        // ── 리페인트 핫패스 캐시 ──
+        // 검색 결과: 검색어나 폴더가 바뀔 때만 다시 필터링한다 (매 리페인트 LINQ 금지)
+        private readonly List<Sprite> filteredCache = new List<Sprite>();
+        private string filteredForSearch;
+        private int spriteListVersion;
+        private int filteredForVersion = -1;
+
+        // 스프라이트 버튼 라벨: 목록이 바뀔 때만 재생성 (썸네일만 매 리페인트 갱신)
+        private readonly Dictionary<Sprite, GUIContent> spriteContents = new Dictionary<Sprite, GUIContent>();
+        private int contentsForVersion = -1;
+
+        // 스타일: 1회 생성 후 그리드 크기 변화만 반영
+        private GUIStyle listItemStyle;
+        private GUIStyle gridItemStyle;
 
         // 윈도우 표시 메서드
         public static void ShowWindow(string initialPath, Action<Sprite> onSpriteSelected)
@@ -570,9 +634,7 @@ namespace CAT.Utility
 
             rightPaneScroll = EditorGUILayout.BeginScrollView(rightPaneScroll);
 
-            var filteredSprites = string.IsNullOrEmpty(searchString)
-                ? spritesInSelectedFolder
-                : spritesInSelectedFolder.Where(s => s.name.ToLower().Contains(searchString.ToLower())).ToList();
+            List<Sprite> filteredSprites = GetFilteredSprites();
 
             if (filteredSprites.Count == 0)
             {
@@ -594,34 +656,113 @@ namespace CAT.Utility
 
             EditorGUILayout.EndScrollView();
             EditorGUILayout.EndVertical();
+
+            // 썸네일이 아직 로드 중일 때만 리페인트 예약 (완료되면 자동으로 멈춘다)
+            if (Event.current.type == EventType.Repaint && AssetPreview.IsLoadingAssetPreviews())
+            {
+                Repaint();
+            }
+        }
+
+        // 검색 결과 캐시: 검색어나 스프라이트 목록이 바뀔 때만 다시 필터링한다.
+        private List<Sprite> GetFilteredSprites()
+        {
+            if (string.IsNullOrEmpty(searchString)) return spritesInSelectedFolder;
+
+            if (filteredForSearch != searchString || filteredForVersion != spriteListVersion)
+            {
+                filteredForSearch = searchString;
+                filteredForVersion = spriteListVersion;
+
+                filteredCache.Clear();
+                foreach (var sprite in spritesInSelectedFolder)
+                {
+                    if (sprite == null) continue;
+                    if (sprite.name.IndexOf(searchString, StringComparison.OrdinalIgnoreCase) < 0) continue;
+                    filteredCache.Add(sprite);
+                }
+            }
+
+            return filteredCache;
+        }
+
+        // 버튼 라벨 캐시: 목록이 바뀔 때만 문자열을 만들고, 썸네일은 비동기 로드되므로 매 리페인트 참조만 갱신한다.
+        private void EnsureSpriteContents()
+        {
+            if (contentsForVersion == spriteListVersion) return;
+            contentsForVersion = spriteListVersion;
+
+            spriteContents.Clear();
+            foreach (var sprite in spritesInSelectedFolder)
+            {
+                if (sprite == null || spriteContents.ContainsKey(sprite)) continue;
+
+                string name = sprite.name;
+                string displayName = name.Length > 12 ? name.Substring(0, 12) + "..." : name;
+                spriteContents[sprite] = new GUIContent(displayName, (Texture)null, name);
+            }
+        }
+
+        private GUIContent GetSpriteContent(Sprite sprite)
+        {
+            EnsureSpriteContents();
+
+            if (!spriteContents.TryGetValue(sprite, out GUIContent content))
+            {
+                content = new GUIContent(sprite.name);
+                spriteContents[sprite] = content;
+            }
+
+            content.image = AssetPreview.GetAssetPreview(sprite);   // Unity 내부 캐시 조회라 가벼움
+            return content;
+        }
+
+        private void EnsureItemStyles()
+        {
+            if (listItemStyle != null) return;
+
+            listItemStyle = new GUIStyle(EditorStyles.miniButton)
+            {
+                alignment = TextAnchor.MiddleLeft,
+                fixedHeight = 20,
+                imagePosition = ImagePosition.ImageLeft,
+                padding = new RectOffset(5, 5, 2, 2),
+                margin = new RectOffset(0, 0, 1, 1)
+            };
+            listItemStyle.normal.background = null;
+            listItemStyle.hover.background = EditorStyles.miniButton.hover.background;
+            listItemStyle.active.background = EditorStyles.miniButton.active.background;
+            listItemStyle.focused.background = null;
+            listItemStyle.onNormal.background = null;
+            listItemStyle.onHover.background = EditorStyles.miniButton.hover.background;
+            listItemStyle.onActive.background = EditorStyles.miniButton.active.background;
+            listItemStyle.onFocused.background = null;
+
+            gridItemStyle = new GUIStyle(GUI.skin.button)
+            {
+                imagePosition = ImagePosition.ImageAbove,
+                alignment = TextAnchor.LowerCenter,
+                padding = new RectOffset(2, 2, 2, 2),
+                clipping = TextClipping.Clip
+            };
+            gridItemStyle.normal.background = null;
+            gridItemStyle.hover.background = GUI.skin.button.hover.background;
+            gridItemStyle.active.background = GUI.skin.button.active.background;
+            gridItemStyle.focused.background = null;
+            gridItemStyle.onNormal.background = null;
+            gridItemStyle.onHover.background = GUI.skin.button.hover.background;
+            gridItemStyle.onActive.background = GUI.skin.button.active.background;
+            gridItemStyle.onFocused.background = null;
         }
 
         // 리스트 뷰 그리기
         private void DrawListView(List<Sprite> sprites)
         {
-            // Unity의 기본 스타일을 사용하여 최적화
-            var listStyle = new GUIStyle(EditorStyles.miniButton);
-            listStyle.alignment = TextAnchor.MiddleLeft;
-            listStyle.fixedHeight = 20;
-            listStyle.imagePosition = ImagePosition.ImageLeft;
-            listStyle.padding = new RectOffset(5, 5, 2, 2);
-            listStyle.margin = new RectOffset(0, 0, 1, 1);
-            
-            // 모든 상태에서 배경을 명시적으로 설정
-            listStyle.normal.background = null; // 기본 상태는 완전 투명
-            listStyle.hover.background = EditorStyles.miniButton.hover.background; // 호버 시 배경
-            listStyle.active.background = EditorStyles.miniButton.active.background; // 클릭 시 배경
-            listStyle.focused.background = null; // 포커스 상태도 투명
-            listStyle.onNormal.background = null; // onNormal 상태도 투명
-            listStyle.onHover.background = EditorStyles.miniButton.hover.background; // onHover 상태
-            listStyle.onActive.background = EditorStyles.miniButton.active.background; // onActive 상태
-            listStyle.onFocused.background = null; // onFocused 상태도 투명
+            EnsureItemStyles();
 
             foreach (var sprite in sprites)
             {
-                var content = new GUIContent(sprite.name, AssetPreview.GetAssetPreview(sprite));
-                
-                if (GUILayout.Button(content, listStyle))
+                if (GUILayout.Button(GetSpriteContent(sprite), listItemStyle))
                 {
                     onSpriteSelectedCallback?.Invoke(sprite);
                     Close();
@@ -632,50 +773,23 @@ namespace CAT.Utility
         // 그리드 뷰 그리기
         private void DrawGridView(List<Sprite> sprites)
         {
-            // 그리드 크기에 따른 버튼 크기 계산
-            float minSize = 60f;
-            float maxSize = 120f;
-            float buttonSize = Mathf.Lerp(minSize, maxSize, gridSize);
+            EnsureItemStyles();
 
-            // Unity의 기본 스타일을 사용하여 최적화
-            var buttonStyle = new GUIStyle(GUI.skin.button);
-            buttonStyle.fixedWidth = buttonSize;
-            buttonStyle.fixedHeight = buttonSize;
-            buttonStyle.imagePosition = ImagePosition.ImageAbove;
-            buttonStyle.alignment = TextAnchor.LowerCenter;
-            buttonStyle.padding = new RectOffset(2, 2, 2, 2);
-            buttonStyle.clipping = TextClipping.Clip;
-            
-            // 모든 상태에서 배경을 명시적으로 설정
-            buttonStyle.normal.background = null; // 기본 상태는 완전 투명
-            buttonStyle.hover.background = GUI.skin.button.hover.background; // 호버 시 배경
-            buttonStyle.active.background = GUI.skin.button.active.background; // 클릭 시 배경
-            buttonStyle.focused.background = null; // 포커스 상태도 투명
-            buttonStyle.onNormal.background = null; // onNormal 상태도 투명
-            buttonStyle.onHover.background = GUI.skin.button.hover.background; // onHover 상태
-            buttonStyle.onActive.background = GUI.skin.button.active.background; // onActive 상태
-            buttonStyle.onFocused.background = null; // onFocused 상태도 투명
+            // 그리드 크기에 따른 버튼 크기 계산 (스타일은 재사용, 크기만 갱신)
+            float buttonSize = Mathf.Lerp(60f, 120f, gridSize);
+            gridItemStyle.fixedWidth = buttonSize;
+            gridItemStyle.fixedHeight = buttonSize;
 
             // 그리드 열 개수 계산
-            int columns = Mathf.FloorToInt((position.width - 200) / (buttonSize + 10));
-            columns = Mathf.Max(1, columns);
+            int columns = Mathf.Max(1, Mathf.FloorToInt((position.width - 200) / (buttonSize + 10)));
 
             for (int i = 0; i < sprites.Count; i++)
             {
                 if (i % columns == 0) GUILayout.BeginHorizontal();
 
                 var sprite = sprites[i];
-                
-                // 텍스트 줄임표 처리
-                string displayName = sprite.name;
-                if (displayName.Length > 12) // 버튼 크기에 따라 조절 가능
-                {
-                    displayName = displayName.Substring(0, 12) + "...";
-                }
-                
-                var content = new GUIContent(displayName, AssetPreview.GetAssetPreview(sprite));
 
-                if (GUILayout.Button(content, buttonStyle))
+                if (GUILayout.Button(GetSpriteContent(sprite), gridItemStyle))
                 {
                     onSpriteSelectedCallback?.Invoke(sprite);
                     Close();
@@ -725,7 +839,10 @@ namespace CAT.Utility
             }
 
             // 이름순으로 정렬
-            spritesInSelectedFolder = spritesInSelectedFolder.OrderBy(s => s.name).ToList();
+            spritesInSelectedFolder.Sort((a, b) => string.CompareOrdinal(a.name, b.name));
+
+            // 필터/라벨 캐시 무효화
+            spriteListVersion++;
         }
     }
 }

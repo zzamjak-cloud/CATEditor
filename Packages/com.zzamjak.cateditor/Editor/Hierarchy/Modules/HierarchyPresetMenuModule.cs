@@ -46,18 +46,28 @@ namespace CAT.HierarchyUtility
         public void OnHierarchyChanged() { }
         public void Dispose() { }
 
+        // GUI 패스 감지: 아이템 콜백은 위→아래(y 증가) 순서로 오므로, y가 줄어들면 새 패스다.
+        // 이 방식으로 버튼을 패스당 1회만 그린다. (기존엔 프리팹 모드에서 아이템 수만큼 중복으로 그렸다)
+        private float _lastItemY = float.MaxValue;
+        private bool _drawnThisPass;
+
         public void OnHierarchyItemGUI(int instanceID, Rect selectionRect)
         {
-            // 프리팹 편집 모드
-            if (PrefabStageUtility.GetCurrentPrefabStage() != null)
+            if (selectionRect.y <= _lastItemY)
             {
-                DrawButton(new Rect(0, 0, 0, 0));
+                _drawnThisPass = false;   // 새 패스 시작
             }
-            else if (selectionRect.y < 20 && selectionRect.x < 50)
-            {
-                // 일반 씬: 첫 번째 아이템 렌더링 시에만 버튼 표시
-                DrawButton(selectionRect);
-            }
+            _lastItemY = selectionRect.y;
+
+            if (_drawnThisPass) return;
+
+            // 프리팹 편집 모드에서는 항상, 일반 씬에서는 최상단 아이템이 보일 때만 표시 (기존 동작 유지)
+            bool show = PrefabStageUtility.GetCurrentPrefabStage() != null
+                        || (selectionRect.y < 20 && selectionRect.x < 50);
+            if (!show) return;
+
+            _drawnThisPass = true;
+            DrawButton(selectionRect);
         }
 
         private void DrawButton(Rect selectionRect)
@@ -260,13 +270,12 @@ namespace CAT.HierarchyUtility
                 var root = new AdvancedDropdownItem("Prefabs");
                 _itemPaths.Clear();
 
-                // 프로젝트 전체에서 대상 이름의 폴더 탐색
-                string[] allFolders = AssetDatabase.GetAllAssetPaths()
-                    .Where(path => path.StartsWith("Assets/") && Directory.Exists(path))
-                    .ToArray();
-
-                var targetFolders = allFolders
-                    .Where(folderPath => Path.GetFileName(folderPath) == _targetFolderName)
+                // 프로젝트 전체에서 대상 이름의 폴더 탐색.
+                // GetAllAssetPaths + Directory.Exists는 에셋 수만큼 파일시스템을 두드려
+                // 큰 프로젝트에서 드롭다운이 수 초 멈춘다. AssetDatabase 인덱스 검색으로 대체.
+                var targetFolders = AssetDatabase.FindAssets("t:Folder")
+                    .Select(AssetDatabase.GUIDToAssetPath)
+                    .Where(path => path.StartsWith("Assets/") && Path.GetFileName(path) == _targetFolderName)
                     .ToArray();
 
                 if (targetFolders.Length == 0)

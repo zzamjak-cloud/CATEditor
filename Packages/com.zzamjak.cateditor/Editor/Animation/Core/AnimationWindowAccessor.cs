@@ -11,9 +11,13 @@ namespace CAT.AnimationUtility
     {
         private static readonly Type _animWindowType;
 
+        // Animation Window가 닫혀 있으면 매 틱 전체 오브젝트를 스캔하게 되므로 재탐색 간격을 둔다.
+        private const double SearchRetryInterval = 1.0;
+
         // 캐싱 필드
         private EditorWindow _window;
         private object _animEditor;
+        private double _nextSearchTime;
 
         static AnimationWindowAccessor()
         {
@@ -216,6 +220,11 @@ namespace CAT.AnimationUtility
         private void FindWindow()
         {
             if (_animWindowType == null) return;
+
+            double now = EditorApplication.timeSinceStartup;
+            if (now < _nextSearchTime) return;
+            _nextSearchTime = now + SearchRetryInterval;
+
             var wins = Resources.FindObjectsOfTypeAll(_animWindowType);
             if (wins == null || wins.Length == 0) return;
             _window = wins[0] as EditorWindow;

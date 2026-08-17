@@ -212,38 +212,57 @@ namespace CAT.Utility
             EditorApplication.update += OnUpdate;
         }
 
+        // 툴바를 찾을 때까지 매 틱 Resources.FindObjectsOfTypeAll을 돌리면 전체 오브젝트를 스캔하게 된다.
+        // 재시도 간격과 횟수를 제한하고, 실패가 확정되면 콜백을 해제해 상시 부하를 남기지 않는다.
+        private const double AttachRetryInterval = 0.5;
+        private const int MaxAttachAttempts = 40;
+
+        private static double s_nextAttachTime;
+        private static int s_attachAttempts;
+
         private static void OnUpdate()
         {
+            double now = EditorApplication.timeSinceStartup;
+            if (now < s_nextAttachTime) return;
+            s_nextAttachTime = now + AttachRetryInterval;
+
+            if (++s_attachAttempts > MaxAttachAttempts)
+            {
+                EditorApplication.update -= OnUpdate;
+                return;
+            }
+
             if (m_currentToolbar == null)
             {
                 var toolbars = Resources.FindObjectsOfTypeAll(m_toolbarType);
                 m_currentToolbar = toolbars.Length > 0 ? (ScriptableObject)toolbars[0] : null;
+                if (m_currentToolbar == null) return;
             }
 
-            if (m_currentToolbar != null)
+            var rootField = m_currentToolbar.GetType().GetField("m_Root", BindingFlags.NonPublic | BindingFlags.Instance);
+            var root = rootField?.GetValue(m_currentToolbar) as VisualElement;
+            if (root == null) return;
+
+            var toolbarZone = root.Q("ToolbarZonePlayMode");
+            if (toolbarZone == null) return;   // 아직 생성 전이면 다음 시도에서 다시 확인
+
+            if (toolbarZone.Q<IMGUIContainer>("SceneToolbarContainer") == null)
             {
-                var root = m_currentToolbar.GetType().GetField("m_Root", BindingFlags.NonPublic | BindingFlags.Instance).GetValue(m_currentToolbar) as VisualElement;
-                var toolbarZone = root.Q("ToolbarZonePlayMode");
-                //var toolbarZone = root.Q("ToolbarZoneLeftAlign");
-
-                var container = toolbarZone?.Q<IMGUIContainer>("SceneToolbarContainer");
-
-                if (container == null)
+                var container = new IMGUIContainer
                 {
-                    container = new IMGUIContainer();
-                    container.name = "SceneToolbarContainer";
-                    container.onGUIHandler = () =>
+                    name = "SceneToolbarContainer",
+                    onGUIHandler = () =>
                     {
                         foreach (var handler in LeftToolbarGUI)
                         {
                             handler();
                         }
-                    };
-                    toolbarZone.Add(container);
-                }
-
-                EditorApplication.update -= OnUpdate;
+                    }
+                };
+                toolbarZone.Add(container);
             }
+
+            EditorApplication.update -= OnUpdate;
         }
     }
 }

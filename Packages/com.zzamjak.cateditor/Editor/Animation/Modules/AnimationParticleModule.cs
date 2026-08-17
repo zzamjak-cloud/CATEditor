@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -57,6 +58,27 @@ namespace CAT.AnimationUtility
             container.Add(parent);
         }
 
+        // Animation Window 내부 상태 타입의 PropertyInfo 캐시
+        private static Type _cachedStateType;
+        private static PropertyInfo _playingProp;
+        private static PropertyInfo _frameProp;
+        private static PropertyInfo _timeProp;
+        private static PropertyInfo _activeRootGameObjectProp;
+        private static PropertyInfo _activeAnimationClipProp;
+
+        private static void CacheStateProperties(Type stateType)
+        {
+            if (_cachedStateType == stateType) return;
+            _cachedStateType = stateType;
+
+            const BindingFlags Flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance;
+            _playingProp = stateType.GetProperty("playing", Flags);
+            _frameProp = stateType.GetProperty("currentFrame", Flags);
+            _timeProp = stateType.GetProperty("currentTime", Flags);
+            _activeRootGameObjectProp = stateType.GetProperty("activeRootGameObject", Flags);
+            _activeAnimationClipProp = stateType.GetProperty("activeAnimationClip", Flags);
+        }
+
         // 매 프레임: 파티클 시뮬레이션 처리
         public void OnUpdate()
         {
@@ -67,14 +89,14 @@ namespace CAT.AnimationUtility
             if (state == null) return;
 
             var stateType = state.GetType();
-            var bindingFlags = System.Reflection.BindingFlags.Public |
-                               System.Reflection.BindingFlags.NonPublic |
-                               System.Reflection.BindingFlags.Instance;
 
-            var playingProp = stateType.GetProperty("playing", bindingFlags);
-            var frameProp = stateType.GetProperty("currentFrame", bindingFlags);
-            var timeProp = stateType.GetProperty("currentTime", bindingFlags);
-            var activeRootGameObjectProp = stateType.GetProperty("activeRootGameObject", bindingFlags);
+            // GetProperty는 매번 이름으로 멤버를 찾으므로 매 프레임 호출하면 안 된다. 타입별로 1회만 해석한다.
+            CacheStateProperties(stateType);
+
+            var playingProp = _playingProp;
+            var frameProp = _frameProp;
+            var timeProp = _timeProp;
+            var activeRootGameObjectProp = _activeRootGameObjectProp;
 
             if (playingProp == null || frameProp == null || timeProp == null || activeRootGameObjectProp == null)
                 return;
@@ -84,7 +106,7 @@ namespace CAT.AnimationUtility
 
             if (currentFrame != _editorFrame)
             {
-                var activeAnimationClipProp = stateType.GetProperty("activeAnimationClip", bindingFlags);
+                var activeAnimationClipProp = _activeAnimationClipProp;
                 if (activeAnimationClipProp == null) return;
 
                 var animationClip = activeAnimationClipProp.GetValue(state) as AnimationClip;
