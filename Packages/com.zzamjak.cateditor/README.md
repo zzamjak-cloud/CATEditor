@@ -16,10 +16,10 @@ Unity 에디터 생산성 도구 모음 패키지입니다. Hierarchy / Animatio
 3. 아래 URL 입력:
 
 ```
-https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.cateditor#v1.0.0
+https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.cateditor#v1.1.1
 ```
 
-특정 버전 대신 최신 상태를 받으려면 `#v1.0.0` 태그를 생략합니다.
+특정 버전 대신 최신 상태를 받으려면 `#v1.1.1` 태그를 생략합니다.
 
 ### manifest.json 직접 편집
 
@@ -28,7 +28,7 @@ https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.catedi
 ```json
 {
   "dependencies": {
-    "com.zzamjak.cateditor": "https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.cateditor#v1.0.0"
+    "com.zzamjak.cateditor": "https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.cateditor#v1.1.1"
   }
 }
 ```

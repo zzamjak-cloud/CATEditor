@@ -5,6 +5,12 @@
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르며,
 버전은 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다.
 
+## [1.1.1] - 2026-08-18
+
+### Changed
+
+- **HierarchyRenamer**: 선택 시에만 입력/대체 필드 표시, 플레이스홀더, 버튼 라벨 변경, 너비에 따른 1/2줄 배치
+
 ## [1.1.0] - 2026-08-17
 
 ### Added
