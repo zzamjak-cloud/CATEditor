@@ -15,13 +15,36 @@ namespace CAT.HierarchyUtility
         public int UIOrder => 0;
 
         private const string PREF_KEY_FOLDED = "HierarchyRenamer_IsFolded";
-        private const float EXPANDED_HEIGHT = 50f;
         private const float FOLDED_HEIGHT = 18f;
+        private const float ACTION_HEIGHT = 20f;
+        private const float BUTTON_GAP = 1f;
+        private const float FIELD_GAP = 2f;
+        private const float DIGIT_WIDTH = 16f;
+        private const float FOLD_WIDTH = 20f;
+        private const int DIGIT_MIN = 0;
+        private const int DIGIT_MAX = 9;
+        private const int BUTTON_COUNT = 6;
+        private const int ROW_BUTTON_COUNT = 3;
+
+        private static readonly string[][] ButtonLabels =
+        {
+            new[] { "sort", "srt", "so" },
+            new[] { "rename", "ren", "rn" },
+            new[] { "replace", "rep", "rp" },
+            new[] { "prefix", "pre", "pf" },
+            new[] { "suffix", "suf", "sf" },
+            new[] { "digit", "dig", "dg" }
+        };
+
+        private static GUIStyle _actionButtonStyle;
+        private static readonly GUIContent _measureContent = new GUIContent();
 
         private string _inputText = "";
         private string _replaceText = "";
         private int _numberPadding = 2;
         private bool _isFolded;
+        private bool _twoRows;
+        private float _appliedHeight;
         private VisualElement _parentContainer;
 
         public void Initialize(HierarchyWindowAccessor accessor)
@@ -43,24 +66,13 @@ namespace CAT.HierarchyUtility
                     position = Position.Absolute,
                     bottom = 5f,
                     right = 5f,
-                    height = _isFolded ? FOLDED_HEIGHT : EXPANDED_HEIGHT,
-                    flexDirection = FlexDirection.Column
+                    flexDirection = FlexDirection.Column,
+                    borderTopColor = new StyleColor(new Color(0.15f, 0.15f, 0.15f))
                 }
             };
 
-            if (_isFolded)
-            {
-                // 접힌 상태: 버튼 너비만큼만 표시, 배경 없음
-                _parentContainer.style.width = 26f;
-            }
-            else
-            {
-                // 펼친 상태: 전체 너비 + 배경
-                _parentContainer.style.left = 33f;
-                _parentContainer.style.backgroundColor = new StyleColor(new Color(0.22f, 0.22f, 0.22f));
-                _parentContainer.style.borderTopWidth = 1;
-                _parentContainer.style.borderTopColor = new StyleColor(new Color(0.15f, 0.15f, 0.15f));
-            }
+            if (_isFolded) ApplyFoldedLayout();
+            else ApplyExpandedLayout();
 
             var imguiContainer = new IMGUIContainer(OnInjectedGUI);
             imguiContainer.style.flexGrow = 1;
@@ -71,9 +83,65 @@ namespace CAT.HierarchyUtility
 
         public void OnHierarchyItemGUI(int instanceID, Rect selectionRect) { }
         public void OnUpdate() { }
-        public void OnSelectionChanged() { }
+
+        public void OnSelectionChanged()
+        {
+            if (_isFolded || _parentContainer == null) return;
+            ApplyExpandedLayout();
+            _parentContainer.MarkDirtyRepaint();
+        }
+
         public void OnHierarchyChanged() { }
         public void Dispose() { }
+
+        private static bool HasGameObjectSelection()
+        {
+            return Selection.gameObjects != null && Selection.gameObjects.Length > 0;
+        }
+
+        private void ApplyFoldedLayout()
+        {
+            if (_parentContainer == null) return;
+            _appliedHeight = FOLDED_HEIGHT;
+            _parentContainer.style.height = FOLDED_HEIGHT;
+            _parentContainer.style.width = 26f;
+            _parentContainer.style.left = StyleKeyword.Auto;
+            _parentContainer.style.backgroundColor = new StyleColor(Color.clear);
+            _parentContainer.style.borderTopWidth = 0;
+        }
+
+        private void ApplyExpandedLayout()
+        {
+            if (_parentContainer == null) return;
+
+            _parentContainer.style.width = StyleKeyword.Auto;
+            _parentContainer.style.left = 33f;
+            _parentContainer.style.backgroundColor = new StyleColor(new Color(0.22f, 0.22f, 0.22f));
+            _parentContainer.style.borderTopWidth = 1;
+            SetExpandedHeight(HasGameObjectSelection(), _twoRows);
+        }
+
+        private static float ComputeExpandedHeight(bool hasSelection, bool twoRows)
+        {
+            float height = 3f;
+            if (hasSelection)
+                height += EditorGUIUtility.singleLineHeight + 1f;
+            height += ACTION_HEIGHT;
+            if (twoRows)
+                height += BUTTON_GAP + ACTION_HEIGHT;
+            return height;
+        }
+
+        private void SetExpandedHeight(bool hasSelection, bool twoRows)
+        {
+            if (_parentContainer == null) return;
+
+            float height = ComputeExpandedHeight(hasSelection, twoRows);
+            if (Mathf.Approximately(_appliedHeight, height)) return;
+
+            _appliedHeight = height;
+            _parentContainer.style.height = height;
+        }
 
         private void OnInjectedGUI()
         {
@@ -85,29 +153,196 @@ namespace CAT.HierarchyUtility
                 return;
             }
 
-            // 펼쳐진 상태: 기존 UI + 접기 버튼
-            EditorGUILayout.Space(2);
+            bool hasSelection = HasGameObjectSelection();
+            var style = ActionButtonStyle;
+            float width = _parentContainer != null && _parentContainer.layout.width > 1f
+                ? _parentContainer.layout.width
+                : EditorGUIUtility.currentViewWidth;
+            _twoRows = NeedsTwoRows(style, width);
+            SetExpandedHeight(hasSelection, _twoRows);
 
-            EditorGUILayout.BeginHorizontal();
-            _inputText = EditorGUILayout.TextField(_inputText, GUILayout.ExpandWidth(true));
-            _replaceText = EditorGUILayout.TextField(_replaceText, GUILayout.ExpandWidth(true));
-            EditorGUILayout.EndHorizontal();
-
-            EditorGUILayout.Space(2);
-
-            EditorGUILayout.BeginHorizontal();
-            if (GUILayout.Button("Arr", GUILayout.Height(20))) { RenameObjects(RenameAction.Sort); }
-            if (GUILayout.Button("Rn", GUILayout.Height(20))) { RenameObjects(RenameAction.Rename); }
-            if (GUILayout.Button("Rp", GUILayout.Height(20))) { RenameObjects(RenameAction.Replace); }
-            if (GUILayout.Button("T_", GUILayout.Height(20))) { RenameObjects(RenameAction.Prefix); }
-            if (GUILayout.Button("_T", GUILayout.Height(20))) { RenameObjects(RenameAction.Suffix); }
-            if (GUILayout.Button("Num", GUILayout.Height(20))) { RenameObjects(RenameAction.Number); }
-            _numberPadding = EditorGUILayout.IntField(_numberPadding, GUILayout.Height(20), GUILayout.Width(30));
-            if (GUILayout.Button("▼", GUILayout.Width(22), GUILayout.Height(20)))
+            if (hasSelection)
             {
-                SetFolded(true);
+                EditorGUILayout.Space(1);
+                DrawTextFields();
             }
-            EditorGUILayout.EndHorizontal();
+
+            EditorGUILayout.Space(1);
+            if (_twoRows) DrawTwoActionRows(style);
+            else DrawSingleActionRow(style);
+        }
+
+        private static GUIStyle ActionButtonStyle
+        {
+            get
+            {
+                if (_actionButtonStyle == null)
+                {
+                    _actionButtonStyle = new GUIStyle(GUI.skin.button)
+                    {
+                        padding = new RectOffset(4, 4, 1, 1),
+                        margin = new RectOffset(0, 0, 0, 0),
+                        overflow = new RectOffset(0, 0, 0, 0),
+                        alignment = TextAnchor.MiddleCenter,
+                        clipping = TextClipping.Clip,
+                        stretchWidth = true,
+                        fixedHeight = ACTION_HEIGHT
+                    };
+                }
+
+                return _actionButtonStyle;
+            }
+        }
+
+        private void DrawTextFields()
+        {
+            var row = EditorGUILayout.GetControlRect(
+                false,
+                EditorGUIUtility.singleLineHeight,
+                GUILayout.ExpandWidth(true),
+                GUILayout.MinWidth(0f));
+
+            float fieldWidth = Mathf.Max(0f, (row.width - FIELD_GAP) * 0.5f);
+            var inputRect = new Rect(row.x, row.y, fieldWidth, row.height);
+            var replaceRect = new Rect(row.x + fieldWidth + FIELD_GAP, row.y, fieldWidth, row.height);
+
+            _inputText = DrawPlaceholderTextField(inputRect, _inputText, "입력 텍스트");
+            _replaceText = DrawPlaceholderTextField(replaceRect, _replaceText, "대체 텍스트");
+        }
+
+        private void DrawSingleActionRow(GUIStyle style)
+        {
+            var row = EditorGUILayout.GetControlRect(
+                false,
+                ACTION_HEIGHT,
+                GUILayout.ExpandWidth(true),
+                GUILayout.MinWidth(0f));
+
+            float remaining = row.width - DIGIT_WIDTH - FOLD_WIDTH - BUTTON_GAP * 7;
+            float buttonWidth = Mathf.Max(0f, remaining / BUTTON_COUNT);
+            int tier = SelectLabelTier(style, buttonWidth, 0, BUTTON_COUNT);
+
+            float x = DrawButtons(row, row.x, style, 0, BUTTON_COUNT, buttonWidth, tier);
+            DrawDigitAndFold(row, x);
+        }
+
+        private void DrawTwoActionRows(GUIStyle style)
+        {
+            var row1 = EditorGUILayout.GetControlRect(
+                false,
+                ACTION_HEIGHT,
+                GUILayout.ExpandWidth(true),
+                GUILayout.MinWidth(0f));
+            float row1Width = Mathf.Max(0f, (row1.width - BUTTON_GAP * (ROW_BUTTON_COUNT - 1)) / ROW_BUTTON_COUNT);
+            int tier1 = SelectLabelTier(style, row1Width, 0, ROW_BUTTON_COUNT);
+            DrawButtons(row1, row1.x, style, 0, ROW_BUTTON_COUNT, row1Width, tier1);
+
+            var row2 = EditorGUILayout.GetControlRect(
+                false,
+                ACTION_HEIGHT,
+                GUILayout.ExpandWidth(true),
+                GUILayout.MinWidth(0f));
+            float remaining = row2.width - DIGIT_WIDTH - FOLD_WIDTH - BUTTON_GAP * 4;
+            float row2Width = Mathf.Max(0f, remaining / ROW_BUTTON_COUNT);
+            int tier2 = SelectLabelTier(style, row2Width, ROW_BUTTON_COUNT, ROW_BUTTON_COUNT);
+            float x = DrawButtons(row2, row2.x, style, ROW_BUTTON_COUNT, ROW_BUTTON_COUNT, row2Width, tier2);
+            DrawDigitAndFold(row2, x);
+        }
+
+        private float DrawButtons(
+            Rect row,
+            float x,
+            GUIStyle style,
+            int start,
+            int count,
+            float buttonWidth,
+            int tier)
+        {
+            for (int i = 0; i < count; i++)
+            {
+                int index = start + i;
+                var rect = new Rect(x, row.y, buttonWidth, ACTION_HEIGHT);
+                if (GUI.Button(rect, ButtonLabels[index][tier], style))
+                    RenameObjects((RenameAction)index);
+                x += buttonWidth + BUTTON_GAP;
+            }
+
+            return x;
+        }
+
+        private void DrawDigitAndFold(Rect row, float x)
+        {
+            _numberPadding = DrawDigitField(new Rect(x, row.y, DIGIT_WIDTH, ACTION_HEIGHT), _numberPadding);
+            x += DIGIT_WIDTH + BUTTON_GAP;
+            if (GUI.Button(new Rect(x, row.y, FOLD_WIDTH, ACTION_HEIGHT), "▼", ActionButtonStyle))
+                SetFolded(true);
+        }
+
+        private static bool NeedsTwoRows(GUIStyle style, float width)
+        {
+            float maxLabelWidth = 0f;
+            for (int i = 0; i < BUTTON_COUNT; i++)
+            {
+                _measureContent.text = ButtonLabels[i][0];
+                maxLabelWidth = Mathf.Max(maxLabelWidth, style.CalcSize(_measureContent).x);
+            }
+
+            float needed = maxLabelWidth * BUTTON_COUNT + DIGIT_WIDTH + FOLD_WIDTH + BUTTON_GAP * 7;
+            return width < needed;
+        }
+
+        // 지정 구간 버튼이 잘리지 않는 가장 긴 라벨 단계를 선택.
+        private static int SelectLabelTier(GUIStyle style, float buttonWidth, int start, int count)
+        {
+            float usable = Mathf.Max(0f, buttonWidth);
+            for (int tier = 0; tier < ButtonLabels[0].Length; tier++)
+            {
+                bool allFit = true;
+                for (int i = 0; i < count; i++)
+                {
+                    _measureContent.text = ButtonLabels[start + i][tier];
+                    if (style.CalcSize(_measureContent).x > usable)
+                    {
+                        allFit = false;
+                        break;
+                    }
+                }
+
+                if (allFit) return tier;
+            }
+
+            return ButtonLabels[0].Length - 1;
+        }
+
+        // 비어 있을 때 비활성 스타일 플레이스홀더를 표시하는 텍스트 필드.
+        private static string DrawPlaceholderTextField(Rect rect, string value, string placeholder)
+        {
+            string newValue = EditorGUI.TextField(rect, value ?? "");
+
+            if (string.IsNullOrEmpty(value) && Event.current.type == EventType.Repaint)
+            {
+                var labelRect = new Rect(rect.x + 3f, rect.y, rect.width - 3f, rect.height);
+                using (new EditorGUI.DisabledScope(true))
+                    EditorGUI.LabelField(labelRect, placeholder);
+            }
+
+            return newValue;
+        }
+
+        // 0~9 한 자리만 허용하는 자릿수 필드.
+        private static int DrawDigitField(Rect rect, int value)
+        {
+            string raw = EditorGUI.TextField(rect, Mathf.Clamp(value, DIGIT_MIN, DIGIT_MAX).ToString());
+
+            if (string.IsNullOrEmpty(raw)) return DIGIT_MIN;
+
+            for (int i = raw.Length - 1; i >= 0; i--)
+            {
+                char c = raw[i];
+                if (c >= '0' && c <= '9') return c - '0';
+            }
+
+            return Mathf.Clamp(value, DIGIT_MIN, DIGIT_MAX);
         }
 
         private void SetFolded(bool folded)
@@ -117,24 +352,8 @@ namespace CAT.HierarchyUtility
 
             if (_parentContainer == null) return;
 
-            if (_isFolded)
-            {
-                // 접힌 상태: 버튼 크기만큼만, 배경 제거
-                _parentContainer.style.height = FOLDED_HEIGHT;
-                _parentContainer.style.width = 26f;
-                _parentContainer.style.left = StyleKeyword.Auto;
-                _parentContainer.style.backgroundColor = new StyleColor(Color.clear);
-                _parentContainer.style.borderTopWidth = 0;
-            }
-            else
-            {
-                // 펼친 상태: 전체 너비 + 배경 복원
-                _parentContainer.style.height = EXPANDED_HEIGHT;
-                _parentContainer.style.width = StyleKeyword.Auto;
-                _parentContainer.style.left = 33f;
-                _parentContainer.style.backgroundColor = new StyleColor(new Color(0.22f, 0.22f, 0.22f));
-                _parentContainer.style.borderTopWidth = 1;
-            }
+            if (_isFolded) ApplyFoldedLayout();
+            else ApplyExpandedLayout();
         }
 
         private enum RenameAction { Sort, Rename, Replace, Prefix, Suffix, Number }
