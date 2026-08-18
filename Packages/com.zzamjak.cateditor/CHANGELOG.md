@@ -5,6 +5,12 @@
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르며,
 버전은 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다.
 
+## [1.1.2] - 2026-08-18
+
+### Changed
+
+- **AnimationOffset**: 다중 선택 지원 — `+All/+Pos/+Rot/+Sca` 키 추가와 Position/Rotation/Scale 오프셋이 선택된 모든 GameObject에 일괄 적용. 툴바 라벨에 다중 선택 개수 표시
+
 ## [1.1.1] - 2026-08-18
 
 ### Changed

@@ -88,10 +88,17 @@ namespace CAT.AnimationUtility
             // 펼쳐진 상태: 기존 2행 UI
             EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
 
-            // 선택된 GameObject 이름 표시
-            var selectedObject = Selection.activeGameObject;
-            string selectedObjectName = (selectedObject != null) ? selectedObject.name : "None";
-            EditorGUILayout.LabelField(new GUIContent(selectedObjectName, "Selected GameObject"),
+            // 선택된 GameObject 이름 표시 (다중 선택 시 개수 표기)
+            var selectedGameObjects = Selection.gameObjects;
+            var activeObject = Selection.activeGameObject;
+            string selectedObjectName;
+            if (selectedGameObjects == null || selectedGameObjects.Length == 0 || activeObject == null)
+                selectedObjectName = "None";
+            else if (selectedGameObjects.Length == 1)
+                selectedObjectName = activeObject.name;
+            else
+                selectedObjectName = $"{activeObject.name} (+{selectedGameObjects.Length - 1})";
+            EditorGUILayout.LabelField(new GUIContent(selectedObjectName, "Selected GameObject(s)"),
                 GUILayout.Width(ObjectNameWidth));
 
             // Offset 모드(Time/Frame) 버튼
@@ -207,11 +214,11 @@ namespace CAT.AnimationUtility
         public void OnUpdate() { }
         public void OnSelectionChanged() { }
 
-        // 선택된 GameObject의 Transform 속성에 대한 키를 추가
+        // 선택된 모든 GameObject의 Transform 속성에 대한 키를 추가
         private void AddTransformKeys(PropertyType propertyTypes)
         {
-            var selectedObject = Selection.activeGameObject;
-            if (selectedObject == null) { Debug.LogError("Select a GameObject."); return; }
+            var selectedObjects = Selection.gameObjects;
+            if (selectedObjects == null || selectedObjects.Length == 0) { Debug.LogError("Select a GameObject."); return; }
 
             var activeClip = _accessor.ActiveClip;
             if (activeClip == null) { Debug.LogError("Select an Animation Clip."); return; }
@@ -225,14 +232,37 @@ namespace CAT.AnimationUtility
             var rootObject = _accessor.ActiveRoot;
             if (rootObject == null) { Debug.LogError("Cannot find animation root GameObject."); return; }
 
+            Undo.RecordObject(sourceClip, "Add Transform Keys");
+
+            int successCount = 0;
+            foreach (var selectedObject in selectedObjects)
+            {
+                if (selectedObject == null) continue;
+                if (AddTransformKeysForObject(sourceClip, selectedObject, rootObject, propertyTypes))
+                    successCount++;
+            }
+
+            if (successCount > 0)
+            {
+                Debug.Log($"Transform keys added for {successCount}/{selectedObjects.Length} object(s).");
+                _accessor.ForceRefresh();
+            }
+            else
+            {
+                Debug.LogWarning("Failed to add transform keys.");
+            }
+        }
+
+        // 단일 GameObject에 대해 Transform 키를 추가하고 성공 여부를 반환
+        private bool AddTransformKeysForObject(AnimationClip sourceClip, GameObject selectedObject,
+            GameObject rootObject, PropertyType propertyTypes)
+        {
             string selectedObjectPath = AnimUtil.CalculateTransformPath(
                 selectedObject.transform, rootObject.transform);
             float clipDuration = sourceClip.length;
 
             var rectTransform = selectedObject.GetComponent<RectTransform>();
             bool isRectTransform = rectTransform != null;
-
-            Undo.RecordObject(sourceClip, "Add Transform Keys");
 
             bool anyKeyAdded = false;
             string addedProperties = "";
@@ -314,14 +344,9 @@ namespace CAT.AnimationUtility
             }
 
             if (anyKeyAdded)
-            {
-                Debug.Log($"Transform keys added for: {addedProperties.Trim()} at frame 0 and {(clipDuration > 0 ? "end" : "0")}");
-                _accessor.ForceRefresh();
-            }
-            else
-            {
-                Debug.LogWarning("Failed to add transform keys.");
-            }
+                Debug.Log($"[{selectedObject.name}] keys added: {addedProperties.Trim()} at frame 0 and {(clipDuration > 0 ? "end" : "0")}");
+
+            return anyKeyAdded;
         }
 
         // 현재 클립의 rotation 속성 타입 감지 (quaternion 또는 euler)
@@ -691,13 +716,13 @@ namespace CAT.AnimationUtility
             return newCurve;
         }
 
-        // 루프 애니메이션 오프셋 적용
+        // 루프 애니메이션 오프셋 적용 (선택된 모든 GameObject 대상)
         private void ApplyLoopOffset(PropertyType propertyType)
         {
             if (_offsetValue == 0) { Debug.LogWarning("Offset value is 0."); return; }
 
-            var selectedObject = Selection.activeGameObject;
-            if (selectedObject == null) { Debug.LogError("Select a GameObject."); return; }
+            var selectedObjects = Selection.gameObjects;
+            if (selectedObjects == null || selectedObjects.Length == 0) { Debug.LogError("Select a GameObject."); return; }
 
             var activeClip = _accessor.ActiveClip;
             if (activeClip == null) { Debug.LogError("Select an Animation Clip."); return; }
@@ -722,12 +747,18 @@ namespace CAT.AnimationUtility
             var bindings = AnimUtil.GetCurveBindings(sourceClip);
             bool anyCurveModified = false;
 
-            string selectedObjectPath = AnimUtil.CalculateTransformPath(
-                selectedObject.transform, rootObject.transform);
+            // 선택된 모든 오브젝트의 경로 수집
+            var selectedPaths = new HashSet<string>();
+            foreach (var selectedObject in selectedObjects)
+            {
+                if (selectedObject == null) continue;
+                selectedPaths.Add(AnimUtil.CalculateTransformPath(
+                    selectedObject.transform, rootObject.transform));
+            }
 
             foreach (var binding in bindings)
             {
-                if (binding.path == selectedObjectPath && IsPropertyTypeMatch(binding.propertyName, propertyType))
+                if (selectedPaths.Contains(binding.path) && IsPropertyTypeMatch(binding.propertyName, propertyType))
                 {
                     var curve = AnimUtil.GetEditorCurve(sourceClip, binding);
                     if (curve == null || curve.keys.Length == 0) continue;
@@ -743,12 +774,12 @@ namespace CAT.AnimationUtility
 
             if (anyCurveModified)
             {
-                Debug.Log($"Loop offset applied successfully: {_offsetValue} " + (_isTimeInputMode ? "s" : "frames"));
+                Debug.Log($"Loop offset applied to {selectedPaths.Count} object(s): {_offsetValue} " + (_isTimeInputMode ? "s" : "frames"));
                 _accessor.ForceRefresh();
             }
             else
             {
-                Debug.LogWarning($"No '{propertyType}' curves found for '{selectedObject.name}'.");
+                Debug.LogWarning($"No '{propertyType}' curves found for the selected object(s).");
             }
         }
 
