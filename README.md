@@ -7,7 +7,7 @@ Unity 에디터 생산성 도구 모음(Hierarchy 유틸리티, Animation Window
 ## 설치 (Unity Package Manager → Install package from git URL)
 
 ```
-https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.cateditor#v1.1.3
+https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.cateditor#v1.1.4
 ```
 
 ## 문서

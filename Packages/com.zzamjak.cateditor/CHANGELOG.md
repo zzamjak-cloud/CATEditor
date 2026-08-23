@@ -5,6 +5,12 @@
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르며,
 버전은 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다.
 
+## [1.1.4] - 2026-08-23
+
+### Changed
+
+- GPL-3.0-only 라이선스 정보와 저작권 고지가 적용된 배포 버전 발행
+
 ## [1.1.3] - 2026-08-23
 
 ### Changed

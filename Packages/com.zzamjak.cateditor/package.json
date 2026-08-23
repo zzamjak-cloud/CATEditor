@@ -1,7 +1,7 @@
 {
   "name": "com.zzamjak.cateditor",
   "displayName": "CATEditor",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "unity": "6000.0",
   "description": "Unity 에디터 생산성 도구 모음입니다. 프리팹 프리뷰(UI/이펙트 미리보기), Hierarchy 유틸리티(일괄 이름 변경, 참조 마커, 프리팹 프리셋 메뉴), Animation Window 확장(선택 동기화, 루프 오프셋, 파티클 시뮬레이션), 셰이프 텍스처 생성기, 씬 툴바, 즐겨찾기 폴더, Transform/TMP 복사-붙여넣기 단축키 등을 제공합니다.",
   "documentationUrl": "https://github.com/zzamjak-cloud/CATEditor",
