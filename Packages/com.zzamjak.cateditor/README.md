@@ -16,10 +16,10 @@ Unity 에디터 생산성 도구 모음 패키지입니다. Hierarchy / Animatio
 3. 아래 URL 입력:
 
 ```
-https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.cateditor#v1.1.1
+https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.cateditor#v1.1.3
 ```
 
-특정 버전 대신 최신 상태를 받으려면 `#v1.1.1` 태그를 생략합니다.
+특정 버전 대신 최신 상태를 받으려면 `#v1.1.3` 태그를 생략합니다.
 
 ### manifest.json 직접 편집
 
@@ -28,7 +28,7 @@ https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.catedi
 ```json
 {
   "dependencies": {
-    "com.zzamjak.cateditor": "https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.cateditor#v1.1.1"
+    "com.zzamjak.cateditor": "https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.cateditor#v1.1.3"
   }
 }
 ```
@@ -105,4 +105,10 @@ com.zzamjak.cateditor/
 
 ## 라이선스
 
-[MIT](LICENSE.md)
+CATEditor는 **GNU General Public License v3.0 only (GPL-3.0-only)** 로 배포됩니다.
+
+- Copyright (c) 2026 zzamjak. 모든 저작권 고지는 보존되어야 합니다.
+- 수정본과 파생 배포물은 GPL-3.0-only로 공개되어야 하며, 대응 소스 코드를 함께 제공해야 합니다.
+- 저작권 고지를 제거하거나, 소스 비공개 독점물로 재라이선스하거나, GPL-3.0-only 권리를 제한하는 방식으로 배포할 수 없습니다.
+
+자세한 내용은 [LICENSE.md](LICENSE.md)와 [NOTICE.md](NOTICE.md)를 확인하세요.
