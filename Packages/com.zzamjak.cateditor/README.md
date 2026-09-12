@@ -1,6 +1,8 @@
 # CATEditor
 
-Unity 에디터 생산성 도구 모음 패키지입니다. Hierarchy / Animation Window 확장, 셰이프 텍스처 생성기, 씬 툴바, 즐겨찾기 폴더, 커스텀 단축키 등을 제공합니다.
+Unity 에디터 생산성 도구 모음 패키지입니다. Hierarchy / Animation Window 확장, 프리팹 프리뷰, 씬 툴바, 즐겨찾기 폴더, 커스텀 단축키 등을 제공합니다.
+
+> 셰이프 텍스처 생성기는 2.0.0 부터 [ShapeGenerator](https://github.com/zzamjak-cloud/ShapeGenerator) 패키지로 분리되었습니다 (`openupm add com.zzamjak.shapegenerator`).
 
 - **에디터 전용**: 모든 코드는 에디터에서만 동작하며 빌드에 포함되지 않습니다.
 - **요구 버전**: Unity 6 (6000.0) 이상, uGUI 2.0 (TextMeshPro 포함)
@@ -16,10 +18,10 @@ Unity 에디터 생산성 도구 모음 패키지입니다. Hierarchy / Animatio
 3. 아래 URL 입력:
 
 ```
-https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.cateditor#v1.1.4
+https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.cateditor#v2.0.0
 ```
 
-특정 버전 대신 최신 상태를 받으려면 `#v1.1.4` 태그를 생략합니다.
+특정 버전 대신 최신 상태를 받으려면 `#v2.0.0` 태그를 생략합니다.
 
 ### manifest.json 직접 편집
 
@@ -28,7 +30,7 @@ https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.catedi
 ```json
 {
   "dependencies": {
-    "com.zzamjak.cateditor": "https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.cateditor#v1.1.4"
+    "com.zzamjak.cateditor": "https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.cateditor#v2.0.0"
   }
 }
 ```
@@ -62,12 +64,7 @@ Animation Window에 추가 기능을 주입합니다. `IAnimationToolModule` 기
 
 상세 문서: [Editor/Animation/README.md](Editor/Animation/README.md)
 
-### 3. Shape Generator (`Editor/ShapeGenerator`)
-
-`CAT > Utility > Shape Generator` 메뉴로 열리는 셰이프 텍스처 생성 창입니다.
-원 / 다각형 / 별 (윤곽선, 채움+윤곽선 변형 포함), 그라디언트, 그라디언트 알파, 노이즈 텍스처를 생성해 PNG로 저장할 수 있습니다.
-
-### 4. 유틸리티 (`Editor/Utility`)
+### 3. 유틸리티 (`Editor/Utility`)
 
 | 도구 | 기능 |
 |------|------|
@@ -99,7 +96,7 @@ com.zzamjak.cateditor/
 └── Editor/
     ├── Animation/       Animation Window 확장 (Core + Modules)
     ├── Hierarchy/       Hierarchy 유틸리티 (Core + Modules)
-    ├── ShapeGenerator/  셰이프 텍스처 생성기
+    ├── Preview/         프리팹 프리뷰 (UI / 이펙트)
     └── Utility/         씬 툴바, 즐겨찾기 폴더, 단축키 등
 ```
 

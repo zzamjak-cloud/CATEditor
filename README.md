@@ -1,13 +1,21 @@
 # CATEditor
 
-Unity 에디터 생산성 도구 모음(Hierarchy 유틸리티, Animation Window 확장, Shape Generator, 씬 툴바, 즐겨찾기 폴더, 커스텀 단축키)을 제공하는 Unity UPM 패키지입니다.
+Unity 에디터 생산성 도구 모음(Hierarchy 유틸리티, Animation Window 확장, 프리팹 프리뷰, 씬 툴바, 즐겨찾기 폴더, 커스텀 단축키)을 제공하는 Unity UPM 패키지입니다.
 
 이 레포지토리는 **개발용 Unity 프로젝트**이며, 패키지 본체는 [`Packages/com.zzamjak.cateditor`](Packages/com.zzamjak.cateditor)에 임베디드되어 있습니다.
 
-## 설치 (Unity Package Manager → Install package from git URL)
+## 설치
+
+### OpenUPM (권장)
 
 ```
-https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.cateditor#v1.1.4
+openupm add com.zzamjak.cateditor
+```
+
+### Unity Package Manager → Install package from git URL
+
+```
+https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.cateditor#v2.0.0
 ```
 
 ## 문서

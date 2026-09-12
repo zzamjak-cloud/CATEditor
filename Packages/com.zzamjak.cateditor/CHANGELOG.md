@@ -5,6 +5,16 @@
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르며,
 버전은 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다.
 
+## [2.0.0] - 2026-09-13
+
+### Removed
+
+- **Shape Generator**: 독립 패키지 [ShapeGenerator](https://github.com/zzamjak-cloud/ShapeGenerator) 로 분리. 이 기능이 필요하면 `openupm add com.zzamjak.shapegenerator` 로 설치하세요. 메뉴 경로는 `CAT > Utility > Shape Generator` 에서 `CAT > Shape Generator` 로 바뀝니다
+
+### Changed
+
+- `changelogUrl` 이 가리키던 404 경로를 패키지 내부 CHANGELOG 로 수정하고 `licensesUrl` 추가
+
 ## [1.1.4] - 2026-08-23
 
 ### Changed
