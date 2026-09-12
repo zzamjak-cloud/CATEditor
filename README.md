@@ -15,7 +15,7 @@ openupm add com.zzamjak.cateditor
 ### Unity Package Manager → Install package from git URL
 
 ```
-https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.cateditor#v2.0.0
+https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.cateditor#v2.1.0
 ```
 
 ## 문서

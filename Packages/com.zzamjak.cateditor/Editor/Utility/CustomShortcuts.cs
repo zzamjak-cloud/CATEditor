@@ -15,30 +15,33 @@ namespace CAT.Utility
         // 복사된 TMP 컴포넌트를 저장하기 위한 변수
         private static TextMeshProUGUI copiedTMP;
 
+        // Unity 내장 Square 스프라이트 생성 메뉴 경로
+        private const string UnitySquareSpriteMenu = "GameObject/2D Object/Sprites/Square";
+
 
         // Image 생성 (Mac: Command+Option+I, Windows: Ctrl+Alt+I)
-        [MenuItem("GameObject/UI/Custom Image %&i", false, 0)]
+        [MenuItem("CAT/Create/Image %&i", false, 0)]
         static void CreateImage()
         {
             CreateUIElement<Image>("Image");
         }
 
         // Raw Image 생성 (Mac: Command+Option+R, Windows: Ctrl+Alt+R)
-        [MenuItem("GameObject/UI/Custom Raw Image %&r", false, 0)]
+        [MenuItem("CAT/Create/Raw Image %&r", false, 1)]
         static void CreateRawImage()
         {
             CreateUIElement<RawImage>("Raw Image");
         }
 
         // TextMesh Pro 생성 (Mac: Command+Option+T, Windows: Ctrl+Alt+T)
-        [MenuItem("GameObject/UI/Custom TextMeshPro Text %&t", false, 0)]
+        [MenuItem("CAT/Create/TextMeshPro Text %&t", false, 2)]
         static void CreateTextMeshPro()
         {
             CreateTextMeshProElement();
         }
 
         // Square Sprite 생성 (Mac: Command+Option+S, Windows: Ctrl+Alt+S)
-        [MenuItem("GameObject/2D Object/Custom Square Sprite %&s", false, 0)]
+        [MenuItem("CAT/Create/Square Sprite %&s", false, 3)]
         static void CreateSquareSprite()
         {
             // 현재 선택된 오브젝트를 부모로 사용하기 위해 기억해 둡니다.
@@ -48,11 +51,11 @@ namespace CAT.Utility
             // 이 방법은 런타임에 텍스처를 생성할 때 발생하는 에셋 지속성 문제를 해결합니다.
             try
             {
-                EditorApplication.ExecuteMenuItem("GameObject/2D Object/Sprites/Square");
+                EditorApplication.ExecuteMenuItem(UnitySquareSpriteMenu);
             }
             catch (System.Exception)
             {
-                Debug.LogError("메뉴 항목 'GameObject/2D Object/Sprites/Square'를 실행하지 못했습니다. 현재 Unity 버전과 메뉴 경로가 다를 수 있습니다.");
+                Debug.LogError($"메뉴 항목 '{UnitySquareSpriteMenu}'를 실행하지 못했습니다. 현재 Unity 버전과 메뉴 경로가 다를 수 있습니다.");
                 return;
             }
 
@@ -79,7 +82,7 @@ namespace CAT.Utility
         }
 
         // Transform 복사 (F5)
-        [MenuItem("Edit/Copy Transform _f5", false, 200)]
+        [MenuItem("CAT/Transform/Copy Transform _f5", false, 100)]
         static void CopyTransform()
         {
             GameObject selectedObject = Selection.activeGameObject;
@@ -113,7 +116,7 @@ namespace CAT.Utility
         }
 
         // Transform 붙여넣기 (Shift+F5)
-        [MenuItem("Edit/Paste Transform #f5", false, 201)]
+        [MenuItem("CAT/Transform/Paste Transform #f5", false, 101)]
         static void PasteTransform()
         {
             if (copiedTransform == null)
@@ -179,7 +182,7 @@ namespace CAT.Utility
         }
 
         // TMP 복사 (F6)
-        [MenuItem("Edit/Copy TMP _f6", false, 202)]
+        [MenuItem("CAT/Transform/Copy TMP _f6", false, 102)]
         static void CopyTMP()
         {
             GameObject selectedObject = Selection.activeGameObject;
@@ -202,7 +205,7 @@ namespace CAT.Utility
         }
 
         // TMP 붙여넣기 (Shift+F6)
-        [MenuItem("Edit/Paste TMP #f6", false, 203)]
+        [MenuItem("CAT/Transform/Paste TMP #f6", false, 103)]
         static void PasteTMP()
         {
             if (copiedTMP == null)

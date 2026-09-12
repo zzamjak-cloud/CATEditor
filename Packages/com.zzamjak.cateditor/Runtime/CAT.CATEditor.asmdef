@@ -1,15 +1,8 @@
 {
-    "name": "CAT.CATEditor.Editor",
+    "name": "CAT.CATEditor",
     "rootNamespace": "CAT.CATEditor",
-    "references": [
-        "CAT.CATEditor",
-        "UnityEngine.UI",
-        "UnityEditor.UI",
-        "Unity.TextMeshPro"
-    ],
-    "includePlatforms": [
-        "Editor"
-    ],
+    "references": [],
+    "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,

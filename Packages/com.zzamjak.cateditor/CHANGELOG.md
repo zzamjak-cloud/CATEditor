@@ -5,6 +5,29 @@
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르며,
 버전은 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다.
 
+## [2.1.0] - 2026-09-13
+
+기존 코드가 CAT 패키지 규약을 따르지 않던 부분을 정리했습니다.
+
+### Changed
+
+- **CustomShortcuts 메뉴 경로를 CAT 하위로 이동**. 단축키는 그대로이며 Hierarchy 우클릭(`GameObject >`)과 `Edit >` 메뉴에서는 더 이상 노출되지 않습니다
+
+  | 이전 | 이후 | 단축키 |
+  |------|------|--------|
+  | `GameObject > UI > Custom Image` | `CAT > Create > Image` | `Cmd/Ctrl+Alt+I` |
+  | `GameObject > UI > Custom Raw Image` | `CAT > Create > Raw Image` | `Cmd/Ctrl+Alt+R` |
+  | `GameObject > UI > Custom TextMeshPro Text` | `CAT > Create > TextMeshPro Text` | `Cmd/Ctrl+Alt+T` |
+  | `GameObject > 2D Object > Custom Square Sprite` | `CAT > Create > Square Sprite` | `Cmd/Ctrl+Alt+S` |
+  | `Edit > Copy Transform` | `CAT > Transform > Copy Transform` | `F5` |
+  | `Edit > Paste Transform` | `CAT > Transform > Paste Transform` | `Shift+F5` |
+  | `Edit > Copy TMP` | `CAT > Transform > Copy TMP` | `F6` |
+  | `Edit > Paste TMP` | `CAT > Transform > Paste TMP` | `Shift+F6` |
+
+### Added
+
+- 패키지 규약에 맞춘 `Runtime/CAT.CATEditor.asmdef` 골격 추가. Editor 어셈블리가 이를 참조하도록 연결
+
 ## [2.0.0] - 2026-09-13
 
 ### Removed

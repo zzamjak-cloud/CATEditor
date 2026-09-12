@@ -18,10 +18,10 @@ Unity 에디터 생산성 도구 모음 패키지입니다. Hierarchy / Animatio
 3. 아래 URL 입력:
 
 ```
-https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.cateditor#v2.0.0
+https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.cateditor#v2.1.0
 ```
 
-특정 버전 대신 최신 상태를 받으려면 `#v2.0.0` 태그를 생략합니다.
+특정 버전 대신 최신 상태를 받으려면 `#v2.1.0` 태그를 생략합니다.
 
 ### manifest.json 직접 편집
 
@@ -30,7 +30,7 @@ https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.catedi
 ```json
 {
   "dependencies": {
-    "com.zzamjak.cateditor": "https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.cateditor#v2.0.0"
+    "com.zzamjak.cateditor": "https://github.com/zzamjak-cloud/CATEditor.git?path=/Packages/com.zzamjak.cateditor#v2.1.0"
   }
 }
 ```
@@ -78,14 +78,16 @@ Animation Window에 추가 기능을 주입합니다. `IAnimationToolModule` 기
 
 | 메뉴 | 단축키 | 기능 |
 |------|--------|------|
-| `Edit > Copy Transform` | `F5` | Transform 값 복사 |
-| `Edit > Paste Transform` | `Shift+F5` | Transform 값 붙여넣기 |
-| `Edit > Copy TMP` | `F6` | TextMeshPro 설정 복사 |
-| `Edit > Paste TMP` | `Shift+F6` | TextMeshPro 설정 붙여넣기 |
-| `GameObject > UI > Custom Image` | `Cmd/Ctrl+Alt+I` | Image 생성 |
-| `GameObject > UI > Custom Raw Image` | `Cmd/Ctrl+Alt+R` | RawImage 생성 |
-| `GameObject > UI > Custom TextMeshPro Text` | `Cmd/Ctrl+Alt+T` | RaycastTarget 꺼진 TMP 텍스트 생성 |
-| `GameObject > 2D Object > Custom Square Sprite` | `Cmd/Ctrl+Alt+S` | 사각형 스프라이트 생성 |
+| `CAT > Create > Image` | `Cmd/Ctrl+Alt+I` | Image 생성 |
+| `CAT > Create > Raw Image` | `Cmd/Ctrl+Alt+R` | RawImage 생성 |
+| `CAT > Create > TextMeshPro Text` | `Cmd/Ctrl+Alt+T` | RaycastTarget 꺼진 TMP 텍스트 생성 |
+| `CAT > Create > Square Sprite` | `Cmd/Ctrl+Alt+S` | 사각형 스프라이트 생성 |
+| `CAT > Transform > Copy Transform` | `F5` | Transform 값 복사 |
+| `CAT > Transform > Paste Transform` | `Shift+F5` | Transform 값 붙여넣기 |
+| `CAT > Transform > Copy TMP` | `F6` | TextMeshPro 설정 복사 |
+| `CAT > Transform > Paste TMP` | `Shift+F6` | TextMeshPro 설정 붙여넣기 |
+
+생성 메뉴는 선택 중인 오브젝트를 부모로 삼습니다. 2.1.0 부터 Hierarchy 우클릭(`GameObject >`) 메뉴에서는 노출되지 않습니다.
 
 ---
 
@@ -93,11 +95,12 @@ Animation Window에 추가 기능을 주입합니다. `IAnimationToolModule` 기
 
 ```
 com.zzamjak.cateditor/
-└── Editor/
-    ├── Animation/       Animation Window 확장 (Core + Modules)
-    ├── Hierarchy/       Hierarchy 유틸리티 (Core + Modules)
-    ├── Preview/         프리팹 프리뷰 (UI / 이펙트)
-    └── Utility/         씬 툴바, 즐겨찾기 폴더, 단축키 등
+├── Editor/
+│   ├── Animation/       Animation Window 확장 (Core + Modules)
+│   ├── Hierarchy/       Hierarchy 유틸리티 (Core + Modules)
+│   ├── Preview/         프리팹 프리뷰 (UI / 이펙트)
+│   └── Utility/         씬 툴바, 즐겨찾기 폴더, 단축키 등
+└── Runtime/             런타임 코드 없음 (어셈블리 골격만 유지)
 ```
 
 ## 라이선스
