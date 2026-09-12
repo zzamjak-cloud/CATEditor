@@ -237,14 +237,6 @@
       },
       "url": "https://packages.unity.com"
     },
-    "com.unity.textmeshpro": {
-      "version": "5.0.0",
-      "depth": 1,
-      "source": "builtin",
-      "dependencies": {
-        "com.unity.ugui": "2.0.0"
-      }
-    },
     "com.unity.ugui": {
       "version": "2.0.0",
       "depth": 1,
@@ -261,24 +253,6 @@
       "dependencies": {
         "com.unity.ugui": "2.0.0"
       }
-    },
-    "com.zzamjak.uimaker": {
-      "version": "https://github.com/zzamjak-cloud/UIMaker.git?path=Assets/UIMaker#v1.0.2",
-      "depth": 0,
-      "source": "git",
-      "dependencies": {
-        "com.unity.textmeshpro": "3.0.6"
-      },
-      "hash": "0ceedd93e11b142c57c5660631a1c147e92fe80a"
-    },
-    "com.zzamjak.vfxmaker": {
-      "version": "https://github.com/zzamjak-cloud/VFXMaker.git?path=Assets/VFXMaker",
-      "depth": 0,
-      "source": "git",
-      "dependencies": {
-        "com.unity.ugui": "1.0.0"
-      },
-      "hash": "18c43d722b0f7aa0d21e7be9a20b93d9f0a67f25"
     },
     "com.unity.modules.accessibility": {
       "version": "1.0.0",
