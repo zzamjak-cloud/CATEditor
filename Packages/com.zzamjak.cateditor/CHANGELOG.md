@@ -5,6 +5,12 @@
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르며,
 버전은 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다.
 
+## [2.1.1] - 2026-09-21
+
+### Fixed
+
+- **CustomShortcuts 단축키 등록 방식 변경**. `CAT > Create`와 `CAT > Transform` 메뉴의 단축키를 Unity `ShortcutManagement`로 명시 등록해 패키지 설치 후 `Image`, `Raw Image`, `TextMeshPro Text`, `Square Sprite`, Transform/TMP 복사-붙여넣기 단축키가 동작하도록 수정했습니다.
+
 ## [2.1.0] - 2026-09-13
 
 기존 코드가 CAT 패키지 규약을 따르지 않던 부분을 정리했습니다.
